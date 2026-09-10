@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 
 export const metadata: Metadata = {
-  title: "RH Garden — Gestión de Recursos Humanos",
+  title: "RH Control — Gestión de Recursos Humanos",
   description: "Sistema interno de gestión de empleados",
 };
 

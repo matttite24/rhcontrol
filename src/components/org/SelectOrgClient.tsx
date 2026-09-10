@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Organization } from '@/types/employee'
 import { createOrganizationWithOwnerAction, acceptInvitationAction } from '@/lib/org/actions'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,7 +16,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Building2, Plus, ArrowRight, Loader2, LogOut, Mail, Check } from 'lucide-react'
+import { Building2, Plus, ArrowRight, Loader2, LogOut, Mail, Check, UserCheck } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { AuthBrandPanel } from '@/components/auth/AuthBrandPanel'
 
 interface PendingInvitation {
   id: string
@@ -66,14 +67,14 @@ export function SelectOrgClient({
 
     setInvites((prev) => prev.filter((i) => i.id !== inv.id))
     document.cookie = `rh_current_org_id=${inv.organization_id}; path=/; max-age=31536000; SameSite=Lax`
-    router.push('/employees')
+    router.push('/')
     router.refresh()
   }
 
   function handleSelectOrg(orgId: string) {
     setSelectedId(orgId)
     document.cookie = `rh_current_org_id=${orgId}; path=/; max-age=31536000; SameSite=Lax`
-    router.push('/employees')
+    router.push('/')
     router.refresh()
   }
 
@@ -106,26 +107,33 @@ export function SelectOrgClient({
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-muted/30">
-      <Card className="w-full max-w-xl shadow-lg border">
-        <CardHeader className="text-center space-y-2 pb-6">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-            <Building2 className="h-6 w-6" />
-          </div>
-          <div>
-            <CardTitle className="text-2xl font-bold tracking-tight">Seleccionar Organización</CardTitle>
-            <CardDescription className="text-sm mt-1">
-              Sesión iniciada como <span className="font-medium text-foreground">{userEmail}</span>
-            </CardDescription>
-          </div>
-        </CardHeader>
+    <div className="min-h-screen w-full lg:grid lg:grid-cols-2 bg-background">
+      <AuthBrandPanel headline="Gestión de Recursos Humanos, nómina y documentación." />
 
-        <CardContent className="space-y-4">
+      {/* Panel de contenido */}
+      <div className="flex items-center justify-center p-6 sm:p-12">
+        <div className="auth-enter w-full max-w-md space-y-8">
+          {/* Marca compacta — solo en mobile */}
+          <div className="flex items-center gap-3 lg:hidden">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+              <UserCheck className="h-6 w-6" />
+            </div>
+            <span className="text-lg font-bold tracking-tight">RH Control</span>
+          </div>
+
+          <div className="space-y-1.5">
+            <h1 className="text-2xl font-bold tracking-tight">Selecciona tu organización</h1>
+            <p className="text-sm text-muted-foreground">
+              Sesión iniciada como{' '}
+              <span className="font-medium text-foreground">{userEmail}</span>
+            </p>
+          </div>
+
           {invites.length > 0 && (
-            <div className="space-y-2">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="space-y-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Invitaciones pendientes
-              </Label>
+              </p>
 
               {inviteError && (
                 <div className="p-3 text-xs rounded-xl bg-destructive/10 text-destructive border border-destructive/20">
@@ -133,15 +141,15 @@ export function SelectOrgClient({
                 </div>
               )}
 
-              <div className="grid grid-cols-1 gap-2.5">
+              <div className="space-y-2">
                 {invites.map((inv) => (
                   <div
                     key={inv.id}
-                    className="flex items-center justify-between gap-3 p-4 rounded-2xl border bg-primary/5 border-primary/30"
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3.5"
                   >
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
-                        <Mail className="h-5 w-5" />
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
+                        <Mail className="h-4 w-4" />
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-foreground truncate">
@@ -173,21 +181,23 @@ export function SelectOrgClient({
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Tus Empresas y Organizaciones
-            </Label>
+          <div className="space-y-2.5">
+            {invites.length > 0 && (
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Tus organizaciones
+              </p>
+            )}
 
             {organizations.length === 0 ? (
-              <div className="p-8 text-center border rounded-2xl border-dashed space-y-2">
-                <Building2 className="h-8 w-8 mx-auto text-muted-foreground" />
+              <div className="rounded-2xl border border-dashed p-8 text-center space-y-2">
+                <Building2 className="mx-auto h-8 w-8 text-muted-foreground" />
                 <p className="text-sm font-medium">Aún no tienes empresas vinculadas</p>
                 <p className="text-xs text-muted-foreground">
-                  Crea tu primera empresa a continuación para comenzar a gestionar personal.
+                  Crea tu primera empresa para comenzar a gestionar personal.
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-2.5 max-h-72 overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[22rem] overflow-y-auto -mr-1 pr-1">
                 {organizations.map((org) => {
                   const isPending = selectedId === org.id
                   return (
@@ -195,54 +205,56 @@ export function SelectOrgClient({
                       key={org.id}
                       onClick={() => handleSelectOrg(org.id)}
                       disabled={Boolean(selectedId)}
-                      className="flex items-center justify-between p-4 rounded-2xl border bg-card hover:bg-muted/60 hover:border-primary/50 transition-all text-left group cursor-pointer"
+                      className={cn(
+                        'group flex w-full items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3.5 text-left shadow-xs transition-colors duration-200',
+                        'hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        isPending && 'opacity-60',
+                        selectedId && !isPending && 'pointer-events-none opacity-40'
+                      )}
                     >
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted group-hover:bg-primary/10 group-hover:text-primary transition-colors shrink-0">
-                          <Building2 className="h-5 w-5" />
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary shrink-0">
+                          <Building2 className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-foreground truncate">{org.name}</p>
-                          <p className="text-xs text-muted-foreground">Acceder al panel de RRHH</p>
+                          <p className="text-xs text-muted-foreground">Acceder al panel</p>
                         </div>
                       </div>
 
                       {isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
                       ) : (
-                        <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
                       )}
                     </button>
                   )
                 })}
               </div>
             )}
+
+            <button
+              onClick={() => setOpenDialog(true)}
+              className="group flex w-full items-center gap-3 rounded-2xl border border-dashed px-4 py-3.5 text-left text-sm text-muted-foreground transition-colors duration-200 hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary shrink-0">
+                <Plus className="h-4 w-4" />
+              </div>
+              Crear nueva empresa
+            </button>
           </div>
 
-          <Button
-            variant="outline"
-            onClick={() => setOpenDialog(true)}
-            className="w-full border-dashed h-11"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Crear nueva empresa
-          </Button>
-        </CardContent>
-
-        <CardFooter className="flex justify-between items-center border-t pt-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLogout}
-            className="text-muted-foreground hover:text-destructive"
-          >
-            <LogOut className="h-4 w-4 mr-1.5" />
-            Cerrar sesión
-          </Button>
-
-          <span className="text-xs text-muted-foreground">RH Garden v1.0</span>
-        </CardFooter>
-      </Card>
+          <div className="flex justify-end border-t pt-4">
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Modal para crear nueva Organización */}
       <Dialog open={openDialog} onOpenChange={setOpenDialog}>

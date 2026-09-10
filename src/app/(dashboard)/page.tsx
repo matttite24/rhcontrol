@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { buttonVariants } from '@/components/ui/button'
 import { NoActiveOrg } from '@/components/org/NoActiveOrg'
 import { Employee, Incident, PayrollReport, ShiftRequest } from '@/types/employee'
 import Link from 'next/link'
@@ -12,7 +11,6 @@ import {
   DollarSign,
   TrendingUp,
   TrendingDown,
-  FileCheck2,
   ShieldCheck,
   Bell,
   Sparkles,
@@ -39,11 +37,29 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const currentOrg = await getCurrentOrganization()
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   if (!currentOrg) {
     return (
       <NoActiveOrg />
     )
   }
+
+  // Nombre para el saludo: metadata del usuario o la parte local del correo.
+  const rawName =
+    (user?.user_metadata?.full_name as string | undefined) ||
+    (user?.user_metadata?.name as string | undefined) ||
+    user?.email?.split('@')[0] ||
+    ''
+  const firstName = rawName
+    ? rawName.split(/[.\s_-]+/)[0].replace(/^\w/, (c) => c.toUpperCase())
+    : ''
+
+  const hour = new Date().getHours()
+  const greeting =
+    hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches'
 
   // Todas las consultas de esta página en paralelo, cada una acotada a las
   // columnas que realmente se pintan.
@@ -182,89 +198,87 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
-      {/* Header traslúcido: saludo + fecha, sin repetir el nombre de la organización (ya está en el sidebar) */}
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b bg-background/75 supports-[backdrop-filter]:backdrop-blur-md px-6 py-4">
-        <div className="min-w-0">
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-foreground truncate">
-            Inicio
-          </h1>
-          <p className="text-xs md:text-sm text-muted-foreground capitalize">
-            {todayLabel}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <Link
-            href="/employees/onboarding"
-            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), "text-xs gap-1.5 active:scale-95 transition-transform")}
-          >
-            <FileCheck2 className="h-3.5 w-3.5 text-primary" />
-            Expedientes
-          </Link>
-          <Link
-            href="/payroll"
-            className={cn(buttonVariants({ size: 'sm' }), "text-xs gap-1.5 active:scale-95 transition-transform")}
-          >
-            <DollarSign className="h-3.5 w-3.5" />
-            Generar Nómina
-          </Link>
-        </div>
-      </header>
-
       <div className="p-6 md:p-8 space-y-6 w-full">
-        {/* FILA 1: PLAZOS Y OBLIGACIONES DE PAGO + PLANTILLA — lo más accionable primero */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="group p-4 rounded-xl border bg-card shadow-xs flex items-center gap-3.5 transition-colors hover:bg-muted/30">
-            <div className="p-3 rounded-xl bg-blue-500/10 text-blue-600 shrink-0">
-              <ShieldCheck className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Planilla IESS</p>
-              <p className="text-lg font-bold font-mono text-foreground leading-tight">
-                {daysToIess === 0 ? '¡Vence hoy!' : `${daysToIess} días`}
-              </p>
-              <p className="text-[11px] text-muted-foreground">Límite: 15 de {currentMonthName}</p>
-            </div>
-          </div>
+        {/* Hero: saludo + fecha */}
+        <section className="pb-2 space-y-1.5">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
+            {greeting}
+            {firstName ? `, ${firstName}` : ''}{' '}
+            <span className="inline-block origin-[70%_70%] motion-safe:animate-[wave_2.2s_ease-in-out_1]">
+              👋
+            </span>
+          </h1>
+          <p className="text-sm text-muted-foreground capitalize">{todayLabel}</p>
+        </section>
 
-          <div className="group p-4 rounded-xl border bg-card shadow-xs flex items-center gap-3.5 transition-colors hover:bg-muted/30">
-            <div className="p-3 rounded-xl bg-amber-500/10 text-amber-600 shrink-0">
-              <DollarSign className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Quincena</p>
-              <p className="text-lg font-bold font-mono text-foreground leading-tight">
-                {daysToQuincena === 0 ? '¡Hoy!' : `${daysToQuincena} días`}
-              </p>
-              <p className="text-[11px] text-muted-foreground">Anticipo acordado</p>
-            </div>
-          </div>
-
-          <div className="group p-4 rounded-xl border bg-card shadow-xs flex items-center gap-3.5 transition-colors hover:bg-muted/30">
-            <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-600 shrink-0">
-              <TrendingUp className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Cierre de nómina</p>
-              <p className="text-lg font-bold font-mono text-foreground leading-tight">
-                {daysToEndOfMonth === 0 ? '¡Hoy!' : `${daysToEndOfMonth} días`}
-              </p>
-              <p className="text-[11px] text-muted-foreground">Fin de {currentMonthName}</p>
-            </div>
-          </div>
-
-          <div className="group p-4 rounded-xl border bg-card shadow-xs flex items-center gap-3.5 transition-colors hover:bg-muted/30">
-            <div className="p-3 rounded-xl bg-primary/10 text-primary shrink-0">
-              <Users className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Empleados activos</p>
-              <p className="text-lg font-bold font-mono text-foreground leading-tight">
-                {employees.length}
-              </p>
-              <p className="text-[11px] text-muted-foreground">Total en nómina</p>
-            </div>
-          </div>
+        {/* FILA 1: métricas del día — cards independientes, número dominante */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {[
+            {
+              label: 'Planilla IESS',
+              value: daysToIess === 0 ? 'Hoy' : `${daysToIess}`,
+              unit: daysToIess === 0 ? '' : daysToIess === 1 ? 'día' : 'días',
+              hint: `Límite 15 de ${currentMonthName}`,
+              icon: ShieldCheck,
+              urgent: daysToIess <= 2,
+              href: '/compliance',
+            },
+            {
+              label: 'Quincena',
+              value: daysToQuincena === 0 ? 'Hoy' : `${daysToQuincena}`,
+              unit: daysToQuincena === 0 ? '' : daysToQuincena === 1 ? 'día' : 'días',
+              hint: 'Anticipo acordado',
+              icon: DollarSign,
+              urgent: daysToQuincena <= 2,
+              href: '/payroll',
+            },
+            {
+              label: 'Cierre de nómina',
+              value: daysToEndOfMonth === 0 ? 'Hoy' : `${daysToEndOfMonth}`,
+              unit: daysToEndOfMonth === 0 ? '' : daysToEndOfMonth === 1 ? 'día' : 'días',
+              hint: `Fin de ${currentMonthName}`,
+              icon: TrendingUp,
+              urgent: daysToEndOfMonth <= 2,
+              href: '/payroll/history',
+            },
+            {
+              label: 'Empleados activos',
+              value: `${employees.length}`,
+              unit: employees.length === 1 ? 'persona' : 'personas',
+              hint: 'Total en nómina',
+              icon: Users,
+              urgent: false,
+              href: '/employees',
+            },
+          ].map(({ label, value, unit, hint, icon: Icon, urgent, href }) => (
+            <Link
+              key={label}
+              href={href}
+              className="group relative rounded-2xl border bg-card px-5 py-5 shadow-xs transition-colors duration-200 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronRight className="absolute right-4 top-5 h-4 w-4 text-muted-foreground/40 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+                <span className="text-[13px] font-medium tracking-tight">{label}</span>
+              </div>
+              <div className="mt-3.5 flex items-baseline gap-1.5">
+                <span
+                  className={cn(
+                    'text-[2rem] font-semibold leading-none tabular-nums tracking-[-0.03em]',
+                    urgent ? 'text-destructive' : 'text-foreground'
+                  )}
+                >
+                  {value}
+                </span>
+                {unit && (
+                  <span className="text-[13px] font-medium text-muted-foreground tracking-tight">
+                    {unit}
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-[12px] leading-tight text-muted-foreground/80">{hint}</p>
+            </Link>
+          ))}
         </div>
 
         {/* FILA 2: NOVEDADES PENDIENTES DE APROBACIÓN + RESUMEN DE NÓMINA */}

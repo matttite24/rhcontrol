@@ -351,6 +351,43 @@ export async function removeMemberAction(
 }
 
 /**
+ * Comprueba si ya existe una cuenta de auth para un correo dado.
+ * Se usa en la pantalla de invitación para arrancar el formulario en
+ * modo "iniciar sesión" o "crear cuenta" sin esperar a un error.
+ *
+ * Requiere SUPABASE_SERVICE_ROLE_KEY. Si no está, devuelve
+ * `exists: null` y la UI cae al modo por defecto (crear cuenta).
+ */
+export async function checkEmailHasAccountAction(
+  email: string
+): Promise<{ exists: boolean | null }> {
+  const normalized = email.trim().toLowerCase()
+  if (!normalized || !normalized.includes('@')) {
+    return { exists: null }
+  }
+
+  const admin = createAdminClient()
+  if (!admin) {
+    return { exists: null }
+  }
+
+  try {
+    // Consulta directa a auth.users (el admin client salta RLS).
+    const { data, error } = await admin
+      .schema('auth')
+      .from('users')
+      .select('id')
+      .ilike('email', normalized)
+      .limit(1)
+
+    if (error) return { exists: null }
+    return { exists: (data?.length ?? 0) > 0 }
+  } catch {
+    return { exists: null }
+  }
+}
+
+/**
  * Lista las invitaciones pendientes dirigidas al correo del usuario
  * autenticado (todas las organizaciones). Se usa en /select-org para
  * que el invitado pueda aceptarlas sin tener el enlace con el token.

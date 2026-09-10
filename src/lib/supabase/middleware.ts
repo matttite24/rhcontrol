@@ -63,11 +63,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // 2. Si ya está autenticado y visita /login o /register, enviarlo a /select-org o /employees
+  // 2. Si ya está autenticado y visita /login o /register, enviarlo a inicio o a /select-org
   if (user && isAuthRoute) {
     const orgCookie = request.cookies.get('rh_current_org_id')?.value
     const url = request.nextUrl.clone()
-    url.pathname = orgCookie ? '/employees' : '/select-org'
+    url.pathname = orgCookie ? '/' : '/select-org'
     return NextResponse.redirect(url)
   }
 

@@ -23,6 +23,8 @@ interface InviteFlowClientProps {
   role: 'admin' | 'member'
   /** Email de la sesión actual, o null si no hay sesión. */
   sessionEmail: string | null
+  /** true: el correo ya tiene cuenta; false: no; null: no se pudo determinar. */
+  hasAccount: boolean | null
 }
 
 export function InviteFlowClient({
@@ -31,6 +33,7 @@ export function InviteFlowClient({
   inviteEmail,
   role,
   sessionEmail,
+  hasAccount,
 }: InviteFlowClientProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -38,8 +41,11 @@ export function InviteFlowClient({
   const loggedIn = !!sessionEmail
   const emailMismatch = loggedIn && sessionEmail!.toLowerCase() !== inviteEmail.toLowerCase()
 
-  // Cuando no hay sesión, por defecto asumimos usuario nuevo (crear cuenta).
-  const [mode, setMode] = useState<'signup' | 'login'>('signup')
+  // Modo inicial según si el correo ya tiene cuenta. Si no se pudo
+  // determinar (hasAccount === null), asumimos usuario nuevo.
+  const [mode, setMode] = useState<'signup' | 'login'>(
+    hasAccount ? 'login' : 'signup'
+  )
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,7 +64,7 @@ export function InviteFlowClient({
         /* noop */
       }
     }
-    router.push('/employees')
+    router.push('/')
     router.refresh()
   }
 
@@ -180,6 +186,11 @@ export function InviteFlowClient({
         {/* CASO 3: sin sesión → crear cuenta o iniciar sesión */}
         {!loggedIn && (
           <form onSubmit={handleAuthAndAccept} className="space-y-4">
+            <p className="text-xs text-muted-foreground text-center">
+              {mode === 'signup'
+                ? 'No encontramos una cuenta con este correo. Crea una contraseña para registrarte y unirte.'
+                : 'Ya tienes una cuenta con este correo. Ingresa tu contraseña para unirte.'}
+            </p>
             <div className="space-y-1.5">
               <Label htmlFor="invite-email" className="text-xs font-medium">
                 Correo electrónico

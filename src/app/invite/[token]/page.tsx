@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { AlertCircle } from 'lucide-react'
+import { checkEmailHasAccountAction } from '@/lib/org/actions'
 import { InviteFlowClient } from './InviteFlowClient'
 
 interface InvitePageProps {
@@ -74,6 +75,10 @@ export default async function InvitePage({ params }: InvitePageProps) {
 
   const orgName = invitation.organizations?.name || 'Organización'
 
+  // Si no hay sesión, averiguamos si el correo ya tiene cuenta para
+  // arrancar el formulario en el modo correcto (login vs. registro).
+  const hasAccount = user ? null : (await checkEmailHasAccountAction(invitation.email)).exists
+
   return (
     <InviteFlowClient
       token={token}
@@ -81,6 +86,7 @@ export default async function InvitePage({ params }: InvitePageProps) {
       inviteEmail={invitation.email}
       role={invitation.role}
       sessionEmail={user?.email ?? null}
+      hasAccount={hasAccount}
     />
   )
 }

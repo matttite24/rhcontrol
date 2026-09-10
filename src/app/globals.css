@@ -184,3 +184,131 @@
     opacity: 1;
   }
 }
+
+/*
+ * Iconos animados del sidebar (feedback de hover).
+ * Elemento visto decenas de veces al día → movimiento breve y sutil,
+ * solo transform, 220–260ms, sin bounce. Cada módulo tiene un gesto
+ * propio pero mínimo. Se desactiva con prefers-reduced-motion.
+ *
+ * Se apunta a [class~="group/menu-button"] (la clase que sidebarMenuButtonVariants
+ * SIEMPRE pone en el <button> real) y no a [data-slot="sidebar-menu-button"],
+ * porque los ítems con submenú van envueltos en <CollapsibleTrigger>, que
+ * sobrescribe el data-slot con "collapsible-trigger".
+ */
+[class~='group/menu-button'] svg,
+[data-slot='sidebar-menu-sub-button'] svg {
+  transition: transform 240ms cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform;
+}
+
+/* Empleados: leve “saludo” */
+[class~='group/menu-button']:hover .lucide-users {
+  transform: translateY(-1px) scale(1.08);
+}
+/* Control de Asistencia: la hoja del calendario se inclina */
+[class~='group/menu-button']:hover .lucide-calendar-range {
+  transform: rotate(-6deg) scale(1.06);
+}
+/* Incidencias / documentos: el papel se asoma */
+[class~='group/menu-button']:hover .lucide-file-text {
+  transform: translateY(-1.5px) scale(1.05);
+}
+/* Descuentos: el recibo “tintinea” */
+[class~='group/menu-button']:hover .lucide-receipt {
+  transform: rotate(4deg) scale(1.06);
+}
+/* Nómina: la calculadora hace un tick */
+[class~='group/menu-button']:hover .lucide-calculator {
+  transform: translateY(-1px) scale(1.07);
+}
+/* Cumplimiento: el escudo se afirma */
+[class~='group/menu-button']:hover .lucide-shield-check {
+  transform: scale(1.1);
+}
+/* Inicio */
+[class~='group/menu-button']:hover .lucide-layout-dashboard {
+  transform: scale(1.08);
+}
+/* Configuración: el engranaje gira un cuarto */
+[class~='group/menu-button']:hover .lucide-settings {
+  transform: rotate(45deg);
+  transition-duration: 320ms;
+}
+
+/* El chevron de expandir no debe recibir estos gestos de hover */
+[class~='group/menu-button']:hover .lucide-chevron-right {
+  transform: none;
+}
+
+/* Módulo activo: el icono queda ligeramente realzado de forma permanente */
+[class~='group/menu-button'][data-active] svg,
+[class~='group/menu-button'].data-active svg {
+  transform: scale(1.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class~='group/menu-button'] svg,
+  [data-slot='sidebar-menu-sub-button'] svg {
+    transition: none;
+  }
+  [class~='group/menu-button']:hover svg {
+    transform: none;
+  }
+}
+/* Saludo de la pantalla de inicio: la mano saluda una vez al cargar. */
+@keyframes wave {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-8deg); }
+  45% { transform: rotate(14deg); }
+  60% { transform: rotate(-4deg); }
+  75% { transform: rotate(10deg); }
+}
+
+/*
+ * Panel de marca de autenticación (login / select-org / invitación):
+ * rejilla de puntos con deriva lenta y diagonal sobre el fondo azul.
+ */
+.login-dots {
+  position: absolute;
+  inset: -40px;
+  background-image: radial-gradient(currentColor 1px, transparent 1.5px);
+  background-size: 26px 26px;
+  color: rgb(255 255 255 / 0.14);
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, #000 30%, transparent 75%);
+  animation: login-dots-drift 32s linear infinite;
+}
+@keyframes login-dots-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-26px, -26px, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-dots { animation: none; }
+}
+
+/*
+ * Entrada del panel de contenido de auth (select-org / login).
+ * Suaviza el corte de navegación: fade + leve lift, escalonado.
+ */
+@keyframes auth-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.auth-enter > * {
+  opacity: 0;
+  animation: auth-enter 420ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+.auth-enter > *:nth-child(1) { animation-delay: 0ms; }
+.auth-enter > *:nth-child(2) { animation-delay: 90ms; }
+.auth-enter > *:nth-child(3) { animation-delay: 180ms; }
+.auth-enter > *:nth-child(4) { animation-delay: 270ms; }
+.auth-enter > *:nth-child(5) { animation-delay: 360ms; }
+@media (prefers-reduced-motion: reduce) {
+  @keyframes auth-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .auth-enter > * { animation-delay: 0ms !important; }
+}
