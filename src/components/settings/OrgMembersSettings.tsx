@@ -85,9 +85,16 @@ export function OrgMembersSettings({ organization }: OrgMembersSettingsProps) {
       return
     }
 
-    const inviteUrl = `${window.location.origin}/invite/${res.invitation?.token}`
+    const inviteUrl =
+      res.inviteUrl || `${window.location.origin}/invite/${res.invitation?.token}`
     setLastInviteLink(inviteUrl)
-    setInviteSuccess(`Invitación generada para ${email}`)
+    setInviteSuccess(
+      res.emailSent
+        ? `Invitación enviada por correo a ${email}`
+        : `Invitación generada para ${email}. ${
+            res.emailError ? 'No se pudo enviar el correo automáticamente; comparte el enlace.' : ''
+          }`
+    )
     setEmail('')
     setInviting(false)
     loadData()

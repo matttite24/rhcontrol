@@ -1,9 +1,23 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { Organization, OrganizationInvitation, OrganizationMember } from '@/types/employee'
 import { revalidatePath } from 'next/cache'
+import { headers } from 'next/headers'
 import crypto from 'crypto'
+
+/**
+ * Reconstruye la URL base de la app (https://host) a partir de las cabeceras
+ * del request actual. Sirve para armar el enlace de invitación en el correo.
+ */
+async function getAppBaseUrl(): Promise<string> {
+  const h = await headers()
+  const host = h.get('x-forwarded-host') || h.get('host')
+  const proto = h.get('x-forwarded-proto') || 'https'
+  if (host) return `${proto}://${host}`
+  return process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+}
 
 /**
  * Crea una nueva organización y asigna al usuario autenticado como su
@@ -132,7 +146,14 @@ export async function inviteUserToOrganizationAction(params: {
   organizationId: string
   email: string
   role: 'admin' | 'member'
-}): Promise<{ success: boolean; invitation?: OrganizationInvitation; error?: string }> {
+}): Promise<{
+  success: boolean
+  invitation?: OrganizationInvitation
+  inviteUrl?: string
+  emailSent?: boolean
+  emailError?: string
+  error?: string
+}> {
   try {
     const email = params.email.trim().toLowerCase()
     if (!email || !email.includes('@')) {
@@ -191,9 +212,38 @@ export async function inviteUserToOrganizationAction(params: {
       return { success: false, error: insertError.message }
     }
 
+    const invitation = newInvite as OrganizationInvitation
+    const baseUrl = await getAppBaseUrl()
+    const inviteUrl = `${baseUrl}/invite/${invitation.token}`
+
+    // Enviar el correo de invitación vía la Admin API de Supabase.
+    // Si no hay service_role key configurada, seguimos adelante: el admin
+    // puede copiar el enlace manualmente desde la UI.
+    let emailSent = false
+    let emailError: string | undefined
+    const admin = createAdminClient()
+    if (admin) {
+      const { error: mailErr } = await admin.auth.admin.inviteUserByEmail(email, {
+        redirectTo: inviteUrl,
+        data: {
+          organization_id: params.organizationId,
+          invited_role: params.role,
+        },
+      })
+      if (mailErr) {
+        // El usuario ya podría existir en auth.users: no es un fallo real de
+        // la invitación (la fila ya está creada), solo del envío automático.
+        emailError = mailErr.message
+      } else {
+        emailSent = true
+      }
+    } else {
+      emailError = 'SUPABASE_SERVICE_ROLE_KEY no configurada; comparte el enlace manualmente.'
+    }
+
     revalidatePath('/settings')
 
-    return { success: true, invitation: newInvite as OrganizationInvitation }
+    return { success: true, invitation, inviteUrl, emailSent, emailError }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error al invitar al usuario.' }
   }
@@ -216,14 +266,27 @@ export async function revokeInvitationAction(
       return { success: false, error: 'No autenticado.' }
     }
 
-    const { error } = await supabase
+    // Borramos la fila en vez de marcarla 'revoked': el constraint
+    // unique(organization_id, email, status) impide tener dos filas
+    // 'revoked' del mismo correo, y una invitación cancelada no
+    // necesita conservarse. `.select()` nos deja detectar si RLS
+    // filtró la fila (0 borradas => no eres admin/owner de la org).
+    const { data: deleted, error } = await supabase
       .from('organization_invitations')
-      .update({ status: 'revoked' })
+      .delete()
       .eq('id', invitationId)
       .eq('organization_id', organizationId)
+      .select('id')
 
     if (error) {
       return { success: false, error: error.message }
+    }
+
+    if (!deleted || deleted.length === 0) {
+      return {
+        success: false,
+        error: 'No se pudo cancelar la invitación. Verifica que sigas siendo administrador de la organización.',
+      }
     }
 
     revalidatePath('/settings')

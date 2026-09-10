@@ -26,8 +26,12 @@ export default function LoginPage() {
     setError(null)
     setMessage(null)
 
+    // Destino tras autenticarse: respeta ?redirect= (p. ej. enlaces de invitación)
+    const redirectParam = new URLSearchParams(window.location.search).get('redirect')
+    const destination = redirectParam?.startsWith('/') ? redirectParam : '/select-org'
+
     if (isSignUp) {
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
       })
@@ -35,6 +39,13 @@ export default function LoginPage() {
       if (signUpError) {
         setError(signUpError.message)
         setLoading(false)
+        return
+      }
+
+      // Con confirmación de correo desactivada, signUp deja sesión activa.
+      if (signUpData.session) {
+        router.push(destination)
+        router.refresh()
         return
       }
 
@@ -52,7 +63,7 @@ export default function LoginPage() {
         return
       }
 
-      router.push('/select-org')
+      router.push(destination)
       router.refresh()
     }
   }
