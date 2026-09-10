@@ -90,17 +90,37 @@ export async function getOrganizationMembersAction(
       return { success: false, error: 'No autenticado.' }
     }
 
-    const { data: members, error } = await supabase
-      .from('organization_members')
-      .select('id, organization_id, user_id, role, created_at')
-      .eq('organization_id', organizationId)
-      .order('created_at', { ascending: true })
+    // RPC security definer: une organization_members con auth.users para
+    // devolver el correo. Valida internamente que el llamante sea miembro.
+    const { data: members, error } = await supabase.rpc(
+      'get_organization_members_with_email',
+      { org_id: organizationId }
+    )
 
     if (error) {
-      return { success: false, error: error.message }
+      // Fallback si el RPC aún no está desplegado: lista sin correo.
+      const { data: basic, error: basicErr } = await supabase
+        .from('organization_members')
+        .select('id, organization_id, user_id, role, created_at')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: true })
+
+      if (basicErr) {
+        return { success: false, error: basicErr.message }
+      }
+      return { success: true, data: (basic as OrganizationMember[]) || [] }
     }
 
-    return { success: true, data: (members as OrganizationMember[]) || [] }
+    const mapped = ((members as any[]) || []).map((m) => ({
+      id: m.id,
+      organization_id: m.organization_id,
+      user_id: m.user_id,
+      role: m.role,
+      created_at: m.created_at,
+      user_email: m.email ?? null,
+    })) as OrganizationMember[]
+
+    return { success: true, data: mapped }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error al obtener miembros.' }
   }
@@ -327,6 +347,63 @@ export async function removeMemberAction(
     return { success: true }
   } catch (err: any) {
     return { success: false, error: err.message || 'Error al eliminar miembro.' }
+  }
+}
+
+/**
+ * Lista las invitaciones pendientes dirigidas al correo del usuario
+ * autenticado (todas las organizaciones). Se usa en /select-org para
+ * que el invitado pueda aceptarlas sin tener el enlace con el token.
+ *
+ * La RLS de organization_invitations ya permite al invitado ver sus
+ * propias filas: `lower(email) = lower(auth.jwt() ->> 'email')`.
+ */
+export async function getMyPendingInvitationsAction(): Promise<{
+  success: boolean
+  data?: Array<{
+    id: string
+    token: string
+    role: 'admin' | 'member'
+    organization_id: string
+    organization_name: string
+    expires_at: string
+  }>
+  error?: string
+}> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user?.email) {
+      return { success: false, error: 'No autenticado.' }
+    }
+
+    const { data, error } = await supabase
+      .from('organization_invitations')
+      .select('id, token, role, organization_id, expires_at, organizations(name)')
+      .eq('email', user.email.toLowerCase())
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      return { success: false, error: error.message }
+    }
+
+    const invites = (data || []).map((row: any) => ({
+      id: row.id,
+      token: row.token,
+      role: row.role,
+      organization_id: row.organization_id,
+      organization_name: row.organizations?.name || 'Organización',
+      expires_at: row.expires_at,
+    }))
+
+    return { success: true, data: invites }
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Error al obtener invitaciones.' }
   }
 }
 

@@ -336,13 +336,13 @@ export function OrgMembersSettings({ organization }: OrgMembersSettingsProps) {
                 className="flex items-center justify-between p-4 bg-background"
               >
                 <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium text-xs">
-                    <UserCheck className="h-4 w-4" />
+                  <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium text-xs uppercase">
+                    {member.user_email ? member.user_email.slice(0, 2) : <UserCheck className="h-4 w-4" />}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-foreground">
-                        {member.user_id.slice(0, 8)}... (ID Usuario)
+                      <span className="text-sm font-medium text-foreground break-all">
+                        {member.user_email || `${member.user_id.slice(0, 8)}… (ID Usuario)`}
                       </span>
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full font-medium ${

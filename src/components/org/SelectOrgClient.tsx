@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Organization } from '@/types/employee'
-import { createOrganizationWithOwnerAction } from '@/lib/org/actions'
+import { createOrganizationWithOwnerAction, acceptInvitationAction } from '@/lib/org/actions'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,16 +17,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Building2, Plus, ArrowRight, Loader2, LogOut } from 'lucide-react'
+import { Building2, Plus, ArrowRight, Loader2, LogOut, Mail, Check } from 'lucide-react'
+
+interface PendingInvitation {
+  id: string
+  token: string
+  role: 'admin' | 'member'
+  organization_id: string
+  organization_name: string
+  expires_at: string
+}
 
 interface SelectOrgClientProps {
   organizations: Organization[]
   userEmail: string
+  pendingInvitations?: PendingInvitation[]
 }
 
 export function SelectOrgClient({
   organizations: initialOrgs,
   userEmail,
+  pendingInvitations = [],
 }: SelectOrgClientProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -37,6 +48,27 @@ export function SelectOrgClient({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  const [invites, setInvites] = useState<PendingInvitation[]>(pendingInvitations)
+  const [acceptingId, setAcceptingId] = useState<string | null>(null)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+
+  async function handleAcceptInvite(inv: PendingInvitation) {
+    setAcceptingId(inv.id)
+    setInviteError(null)
+
+    const res = await acceptInvitationAction(inv.token)
+    if (!res.success) {
+      setInviteError(res.error || 'No se pudo aceptar la invitación.')
+      setAcceptingId(null)
+      return
+    }
+
+    setInvites((prev) => prev.filter((i) => i.id !== inv.id))
+    document.cookie = `rh_current_org_id=${inv.organization_id}; path=/; max-age=31536000; SameSite=Lax`
+    router.push('/employees')
+    router.refresh()
+  }
 
   function handleSelectOrg(orgId: string) {
     setSelectedId(orgId)
@@ -89,6 +121,58 @@ export function SelectOrgClient({
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {invites.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Invitaciones pendientes
+              </Label>
+
+              {inviteError && (
+                <div className="p-3 text-xs rounded-xl bg-destructive/10 text-destructive border border-destructive/20">
+                  {inviteError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-2.5">
+                {invites.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center justify-between gap-3 p-4 rounded-2xl border bg-primary/5 border-primary/30"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
+                        <Mail className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">
+                          {inv.organization_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Te invitaron como{' '}
+                          {inv.role === 'admin' ? 'Administrador' : 'Miembro'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => handleAcceptInvite(inv)}
+                      disabled={Boolean(acceptingId)}
+                      className="shrink-0 gap-1.5"
+                    >
+                      {acceptingId === inv.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Check className="h-4 w-4" />
+                      )}
+                      Aceptar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Tus Empresas y Organizaciones
