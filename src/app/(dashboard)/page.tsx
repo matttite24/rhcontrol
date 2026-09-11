@@ -67,18 +67,16 @@ export default async function DashboardPage() {
   const in30DaysIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   const [
-    { data: employeesData },
+    { data: insightsData },
     { data: incidentsData },
     { data: pendingRequestsData },
     { data: upcomingVacationsData },
     { data: payrollReportsData },
   ] = await Promise.all([
-    supabase
-      .from('employees')
-      .select('id, full_name, avatar_url, department, position, birth_date, hire_date, status')
-      .eq('organization_id', currentOrg.id)
-      .neq('status', 'inactivo')
-      .order('full_name'),
+    // RPC agregado (SQL, no JS): cuenta activos + cumpleaños/aniversarios/prueba
+    // del mes, ya filtrados y ordenados en la base — no trae la tabla completa,
+    // así que el costo no crece con la cantidad de empleados de la organización.
+    supabase.rpc('get_dashboard_employee_insights', { org_id: currentOrg.id }),
     supabase
       .from('incidents')
       .select('id, title, incident_type, created_at, employee:employees(full_name, avatar_url, department)')
@@ -114,7 +112,29 @@ export default async function DashboardPage() {
       .limit(2),
   ])
 
-  const employees = (employeesData || []) as Pick<Employee, 'id' | 'full_name' | 'avatar_url' | 'department' | 'position' | 'birth_date' | 'hire_date' | 'status'>[]
+  // El RPC ya devuelve estas listas filtradas/ordenadas/acotadas por la base;
+  // aquí solo se tipan tal como llegan (sin volver a filtrar en JS).
+  type ProbationRow = Pick<Employee, 'id' | 'full_name' | 'avatar_url' | 'department' | 'position' | 'hire_date'> & { days_since_hire: number }
+  type BirthdayRow = Pick<Employee, 'id' | 'full_name' | 'avatar_url' | 'department' | 'position' | 'birth_date'>
+  type AnniversaryRow = Pick<Employee, 'id' | 'full_name' | 'avatar_url' | 'department' | 'hire_date'> & { years: number }
+
+  const insights = (insightsData || {}) as {
+    active_count?: number
+    probation?: ProbationRow[]
+    birthdays?: BirthdayRow[]
+    anniversaries?: AnniversaryRow[]
+  }
+
+  const activeEmployeeCount = insights.active_count ?? 0
+  const probationEmployees = (insights.probation ?? []).map((emp) => ({
+    ...emp,
+    daysSinceHire: emp.days_since_hire,
+  }))
+  const birthdayEmployees = insights.birthdays ?? []
+  const anniversaryEmployees = (insights.anniversaries ?? []).map((emp) => ({
+    ...emp,
+    years: emp.years,
+  }))
 
   const recentIncidents = (incidentsData || []) as unknown as (Pick<Incident, 'id' | 'title' | 'incident_type' | 'created_at'> & { employee?: { full_name: string; avatar_url: string | null; department: string | null } })[]
 
@@ -133,57 +153,14 @@ export default async function DashboardPage() {
     otro: 'Novedad',
   }
 
-  // Período de prueba: empleados con status "prueba", ordenados por antigüedad
-  // (los que llevan más tiempo son los más urgentes de evaluar/confirmar).
-  const probationEmployees = employees
-    .filter((emp) => emp.status === 'prueba' && emp.hire_date)
-    .map((emp) => {
-      const hireDate = new Date(emp.hire_date as string)
-      const daysSinceHire = Math.max(0, Math.floor((Date.now() - hireDate.getTime()) / (24 * 60 * 60 * 1000)))
-      return { ...emp, daysSinceHire }
-    })
-    .sort((a, b) => b.daysSinceHire - a.daysSinceHire)
-
-  // 3. Calcular cumpleaños del mes en curso
+  // probationEmployees / birthdayEmployees / anniversaryEmployees ya llegan
+  // filtrados, ordenados y acotados desde el RPC get_dashboard_employee_insights
+  // (ver arriba) — el mes/día ya se evaluó en SQL, no hace falta recalcularlo.
   const today = new Date()
   const currentMonth = today.getMonth() + 1 // 1-12
   const currentDay = today.getDate()
 
-  const birthdayEmployees = employees.filter((emp) => {
-    if (!emp.birth_date) return false
-    const parts = emp.birth_date.split('-')
-    if (parts.length >= 2) {
-      const bMonth = parseInt(parts[1], 10)
-      return bMonth === currentMonth
-    }
-    return false
-  }).sort((a, b) => {
-    const dayA = parseInt(a.birth_date?.split('-')[2] || '0', 10)
-    const dayB = parseInt(b.birth_date?.split('-')[2] || '0', 10)
-    return dayA - dayB
-  })
-
-  // 4. Aniversarios laborales del mes en curso (mismo criterio que cumpleaños, sobre hire_date)
-  const anniversaryEmployees = employees.filter((emp) => {
-    if (!emp.hire_date) return false
-    const parts = emp.hire_date.split('-')
-    if (parts.length >= 2) {
-      const hMonth = parseInt(parts[1], 10)
-      return hMonth === currentMonth
-    }
-    return false
-  }).map((emp) => {
-    const hireYear = parseInt(emp.hire_date?.split('-')[0] || '0', 10)
-    const years = hireYear ? today.getFullYear() - hireYear : 0
-    return { ...emp, years }
-  }).filter((emp) => emp.years > 0)
-    .sort((a, b) => {
-      const dayA = parseInt(a.hire_date?.split('-')[2] || '0', 10)
-      const dayB = parseInt(b.hire_date?.split('-')[2] || '0', 10)
-      return dayA - dayB
-    })
-
-  // 5. Cálculos de días restantes para Quincena, Fin de Mes e IESS
+  // Cálculos de días restantes para Quincena, Fin de Mes e IESS
   const daysInMonth = new Date(today.getFullYear(), currentMonth, 0).getDate()
 
   const daysToQuincena = currentDay <= 15 ? 15 - currentDay : (daysInMonth - currentDay) + 15
@@ -243,8 +220,8 @@ export default async function DashboardPage() {
             },
             {
               label: 'Empleados activos',
-              value: `${employees.length}`,
-              unit: employees.length === 1 ? 'persona' : 'personas',
+              value: `${activeEmployeeCount}`,
+              unit: activeEmployeeCount === 1 ? 'persona' : 'personas',
               hint: 'Total en nómina',
               icon: Users,
               urgent: false,
