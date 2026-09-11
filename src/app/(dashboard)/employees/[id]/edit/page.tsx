@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { EmployeeForm } from '@/components/employees/EmployeeForm'
 import { EmployeeFormSubmitButton } from '@/components/employees/EmployeeFormSubmitButton'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Department, Position } from '@/types/employee'
+import { Department, Position, RotatingShiftPattern, EmployeeRotatingSchedule } from '@/types/employee'
 import Link from 'next/link'
 import { Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -36,6 +36,8 @@ export default async function EditEmployeePage({
     { data: initialSalaries },
     { data: initialSchedules },
     { data: initialDocuments },
+    { data: rotatingPatterns },
+    { data: initialRotatingSchedule },
   ] = await Promise.all([
     supabase
       .from('employees')
@@ -67,6 +69,16 @@ export default async function EditEmployeePage({
       .from('employee_documents')
       .select('*')
       .eq('employee_id', id),
+    supabase
+      .from('rotating_shift_patterns')
+      .select('*')
+      .eq('organization_id', currentOrg.id)
+      .order('name', { ascending: true }),
+    supabase
+      .from('employee_rotating_schedules')
+      .select('*')
+      .eq('employee_id', id)
+      .maybeSingle(),
   ])
 
   if (error || !employee) notFound()
@@ -126,6 +138,8 @@ export default async function EditEmployeePage({
           initialSalaries={initialSalaries ?? []}
           initialSchedules={initialSchedules ?? []}
           initialDocuments={initialDocuments ?? []}
+          rotatingPatterns={(rotatingPatterns as RotatingShiftPattern[]) ?? []}
+          initialRotatingSchedule={(initialRotatingSchedule as EmployeeRotatingSchedule) ?? null}
         />
       </div>
     </div>

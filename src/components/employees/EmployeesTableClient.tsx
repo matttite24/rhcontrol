@@ -1,6 +1,5 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
 import Link from 'next/link'
 import {
   Table,
@@ -15,7 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { buttonVariants } from '@/components/ui/button'
 import { Employee, EmployeeSalary, EmployeeSchedule, EmployeeDocument, EmployeeStatus } from '@/types/employee'
-import { Phone, Mail, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Phone, Mail } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getEmployeeCompleteness, completenessTone } from '@/lib/employees/completeness'
 
@@ -40,20 +39,8 @@ function getInitials(name: string) {
 }
 
 export function EmployeesTableClient({ employees }: EmployeesTableClientProps) {
-  const [currentPage, setCurrentPage] = useState(1)
-  const pageSize = 20
-
-  // Si cambia la lista de empleados (por filtros), volver a la página 1
-  React.useEffect(() => {
-    setCurrentPage(1)
-  }, [employees.length])
-
-  const totalPages = Math.max(1, Math.ceil(employees.length / pageSize))
-  const paginatedEmployees = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return employees.slice(start, start + pageSize)
-  }, [employees, currentPage, pageSize])
-
+  // La paginación ya viene resuelta por el servidor (ver PaginationBar en la
+  // page): `employees` aquí es solo la página actual, no la lista completa.
   return (
     <div className="w-full">
       <Table className="w-full">
@@ -71,7 +58,7 @@ export function EmployeesTableClient({ employees }: EmployeesTableClientProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {paginatedEmployees.map((emp) => {
+          {employees.map((emp) => {
             const status = statusConfig[emp.status] ?? statusConfig.activo
             const baseSalary = emp.salaries?.find((s) => s.salary_type === 'Sueldo')?.amount
             const completeness = getEmployeeCompleteness(
@@ -202,52 +189,6 @@ export function EmployeesTableClient({ employees }: EmployeesTableClientProps) {
           })}
         </TableBody>
       </Table>
-
-      {/* Barra de Paginación */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/20 text-xs">
-          <span className="text-muted-foreground">
-            Mostrando <span className="font-semibold text-foreground">{((currentPage - 1) * pageSize) + 1}</span> a{' '}
-            <span className="font-semibold text-foreground">{Math.min(currentPage * pageSize, employees.length)}</span> de{' '}
-            <span className="font-semibold text-foreground">{employees.length}</span> empleados
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-8 px-2.5 gap-1 text-xs')}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              Anterior
-            </button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                <button
-                  key={page}
-                  type="button"
-                  onClick={() => setCurrentPage(page)}
-                  className={cn(
-                    buttonVariants({ variant: page === currentPage ? 'default' : 'ghost', size: 'sm' }),
-                    'h-8 w-8 p-0 text-xs'
-                  )}
-                >
-                  {page}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-8 px-2.5 gap-1 text-xs')}
-            >
-              Siguiente
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

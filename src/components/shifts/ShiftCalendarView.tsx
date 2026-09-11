@@ -4,7 +4,8 @@ import React, { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { es } from 'date-fns/locale'
-import { Employee, EmployeeSchedule, DayOfWeek, ShiftRequest, Holiday } from '@/types/employee'
+import { Employee, EmployeeSchedule, DayOfWeek, ShiftRequest, Holiday, EmployeeRotatingSchedule } from '@/types/employee'
+import { isRotatingDayOff } from '@/lib/shifts/rotating-pattern'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,7 @@ import {
 } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
 import { ShiftRequestDetailModal } from './ShiftRequestDetailModal'
+import { NewShiftRequestButton } from './NewShiftRequestButton'
 import { toast } from '@/components/ui/toast'
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Moon, Filter, Check, ChevronDown, RefreshCw, Palmtree, CalendarSearch, Info, UserX, CalendarOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -30,6 +32,11 @@ interface ShiftCalendarViewProps {
   departments?: string[]
   currentDepartment?: string
   holidays?: Holiday[]
+  /** Asignaciones de horario rotativo por ciclo (ver rotating-pattern.ts). */
+  rotatingSchedules?: EmployeeRotatingSchedule[]
+  /** Para el botón "Novedad" (crear solicitud), movido aquí desde el PageHeader. */
+  organizationId: string
+  organizationName?: string
 }
 
 const DAYS_OF_WEEK_MAP: Record<number, DayOfWeek> = {
@@ -80,11 +87,18 @@ interface DayChangeDetail {
 function getEffectiveSchedule(
   sched: EmployeeSchedule | undefined,
   scheduleChangeReq: ShiftRequest | undefined,
-  dayChangeDetail: DayChangeDetail | undefined
+  dayChangeDetail: DayChangeDetail | undefined,
+  /**
+   * Si el empleado tiene un horario rotativo asignado, este valor ya trae
+   * resuelto si el día es libre según el ciclo (ver isRotatingDayOff) — pisa
+   * el `is_workday` del horario semanal fijo, que en este caso solo aporta
+   * las horas de entrada/salida de los días laborables del ciclo.
+   */
+  rotatingIsWorkday: boolean | undefined
 ) {
   if (!scheduleChangeReq) {
     return {
-      isWorkday: sched?.is_workday ?? false,
+      isWorkday: rotatingIsWorkday ?? sched?.is_workday ?? false,
       hasSplit: sched?.has_split_shift ?? false,
       start1: sched?.start_time_1 || DEFAULT_SHIFT_START_1,
       end1: sched?.end_time_1 || DEFAULT_SHIFT_END_1,
@@ -248,6 +262,9 @@ export function ShiftCalendarView({
   departments = [],
   currentDepartment = '',
   holidays = [],
+  rotatingSchedules = [],
+  organizationId,
+  organizationName,
 }: ShiftCalendarViewProps) {
   const [currentBaseDate, setCurrentBaseDate] = useState<Date>(new Date())
   const [viewRange, setViewRange] = useState<ViewRange>('15') // Por defecto 15 días
@@ -272,9 +289,19 @@ export function ShiftCalendarView({
   // desde la derecha, anterior desde la izquierda, saltar a fecha hace fade.
   const [navDirection, setNavDirection] = useState<'next' | 'prev' | 'jump'>('jump')
   const [contentKey, setContentKey] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  function handleRefresh() {
+    setIsRefreshing(true)
+    router.refresh()
+    // router.refresh() no expone un callback de "terminó"; se apaga el
+    // spinner tras un tiempo corto solo para dar feedback de que el clic se
+    // registró, no como indicador exacto de cuándo llegaron los datos.
+    setTimeout(() => setIsRefreshing(false), 600)
+  }
 
   const rangeDates = useMemo(
     () => getRangeDates(currentBaseDate, viewRange),
@@ -335,6 +362,13 @@ export function ShiftCalendarView({
   // Índice O(1) de solicitudes por empleado+fecha, construido una sola vez
   // por cambio de `requests` (no en cada celda de la tabla, ver `buildRequestIndex`)
   const requestIndex = useMemo(() => buildRequestIndex(requests), [requests])
+
+  // Índice de horario rotativo por empleado (a lo sumo uno por empleado, ver
+  // constraint unique(employee_id) en la migración).
+  const rotatingByEmployee = useMemo(
+    () => new Map(rotatingSchedules.filter((rs) => rs.pattern).map((rs) => [rs.employee_id, rs])),
+    [rotatingSchedules]
+  )
 
   function handleFilterDept(deptName: string) {
     const params = new URLSearchParams(searchParams.toString())
@@ -401,7 +435,7 @@ export function ShiftCalendarView({
     <>
       <div className="flex flex-col w-full">
         {/* Controles del Calendario fijados y a ancho completo */}
-        <div className="relative flex flex-wrap items-center justify-between gap-3 bg-card/75 supports-[backdrop-filter]:backdrop-blur-md px-6 py-2.5 sticky top-[73px] z-20 w-full after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-border after:to-transparent">
+        <div className="relative flex flex-wrap items-center justify-between gap-3 bg-card px-6 py-2.5 sticky top-0 z-20 w-full after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-border after:to-transparent">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
               <CalendarIcon className="h-4 w-4" />
@@ -418,7 +452,8 @@ export function ShiftCalendarView({
                 )}
               </div>
               <p className="text-[11px] text-muted-foreground font-mono">
-                {rangeDates.length} días visualizados
+                {rangeDates.length} días visualizados · {employees.length}{' '}
+                {employees.length === 1 ? 'empleado' : 'empleados'}
               </p>
             </div>
           </div>
@@ -513,6 +548,17 @@ export function ShiftCalendarView({
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                title="Actualizar datos"
+                aria-label="Actualizar datos del calendario"
+                className="h-8 w-8 cursor-pointer transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90"
+              >
+                <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+              </Button>
             </div>
 
             {/* Agrupar por departamento: solo tiene sentido si se ven varios a la vez */}
@@ -594,6 +640,14 @@ export function ShiftCalendarView({
                 </div>
               </PopoverContent>
             </Popover>
+
+            {/* Botón "Novedad" — movido aquí desde el PageHeader para
+                recuperar altura vertical de la tabla. */}
+            <NewShiftRequestButton
+              organizationId={organizationId}
+              organizationName={organizationName}
+              employees={employees}
+            />
           </div>
         </div>
 
@@ -775,7 +829,8 @@ export function ShiftCalendarView({
                         const isoDate = formatDateToIso(dayDate)
                         const dayNameSpanish = DAYS_OF_WEEK_MAP[dayDate.getDay()]
                         const sched = emp.schedules?.find((s) => s.day_of_week === dayNameSpanish)
-                        const hasNoScheduleAssigned = !emp.schedules || emp.schedules.length === 0
+                        const hasRotatingAssignment = rotatingByEmployee.has(emp.id)
+                        const hasNoScheduleAssigned = (!emp.schedules || emp.schedules.length === 0) && !hasRotatingAssignment
                         const isToday = dayDate.toDateString() === new Date().toDateString()
                         const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6
                         const isHolidayDate = holidayByDate.has(isoDate)
@@ -799,7 +854,15 @@ export function ShiftCalendarView({
                         const isScheduleChangeApproved = scheduleChangeReq?.status === 'aprobado'
                         const isScheduleChangePending = scheduleChangeReq?.status === 'pendiente'
 
-                        const effective = getEffectiveSchedule(sched, scheduleChangeReq, dayChangeDetail)
+                        // Si el empleado tiene horario rotativo (ver EmployeeRotatingScheduleForm),
+                        // se calcula libre/laborable contra el ciclo en vez del is_workday fijo
+                        // por día de semana — mismo día de semana puede alternar según el ciclo.
+                        const rotatingAssignment = rotatingByEmployee.get(emp.id)
+                        const rotatingIsWorkday = rotatingAssignment?.pattern
+                          ? !isRotatingDayOff(rotatingAssignment.pattern, rotatingAssignment.anchor_date, isoDate)
+                          : undefined
+
+                        const effective = getEffectiveSchedule(sched, scheduleChangeReq, dayChangeDetail, rotatingIsWorkday)
                         const effectiveIsWorkday = effective.isWorkday
                         const effectiveSplit = effective.hasSplit
                         const effectiveStart1 = effective.start1

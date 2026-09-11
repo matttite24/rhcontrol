@@ -4,7 +4,7 @@ import { EmployeeFormSubmitButton } from '@/components/employees/EmployeeFormSub
 import { PageHeader } from '@/components/layout/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
-import { Department, Position } from '@/types/employee'
+import { Department, Position, RotatingShiftPattern } from '@/types/employee'
 import Link from 'next/link'
 import { Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -25,7 +25,7 @@ export default async function NewEmployeePage() {
     )
   }
 
-  const [{ data: departments }, { data: positions }] = await Promise.all([
+  const [{ data: departments }, { data: positions }, { data: rotatingPatterns }] = await Promise.all([
     supabase
       .from('departments')
       .select('*')
@@ -33,6 +33,11 @@ export default async function NewEmployeePage() {
       .order('name', { ascending: true }),
     supabase
       .from('positions')
+      .select('*')
+      .eq('organization_id', currentOrg.id)
+      .order('name', { ascending: true }),
+    supabase
+      .from('rotating_shift_patterns')
       .select('*')
       .eq('organization_id', currentOrg.id)
       .order('name', { ascending: true }),
@@ -68,6 +73,7 @@ export default async function NewEmployeePage() {
           currentOrgId={currentOrg.id}
           departments={(departments as Department[]) ?? []}
           positions={(positions as Position[]) ?? []}
+          rotatingPatterns={(rotatingPatterns as RotatingShiftPattern[]) ?? []}
         />
       </div>
     </div>

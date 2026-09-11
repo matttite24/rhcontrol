@@ -4,13 +4,14 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
-import { Employee, EmployeeInsert, Department, Position, EmployeeSalary, SalaryType, EmployeeSchedule, EmployeeDocument } from '@/types/employee'
+import { Employee, EmployeeInsert, Department, Position, EmployeeSalary, SalaryType, EmployeeSchedule, EmployeeDocument, RotatingShiftPattern, EmployeeRotatingSchedule } from '@/types/employee'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { getEmployeeCompleteness, completenessTone, type EmployeeTabKey } from '@/lib/employees/completeness'
+import { getEmployeeCompleteness, completenessTone, type EmployeeTabKey, type EmployeeCompleteness } from '@/lib/employees/completeness'
 // Cada tab se descarga solo cuando el usuario lo abre (chunk propio), en vez de
 // sumar el JS de los 5 tabs al bundle inicial de la ficha — la mayoría de las
 // visitas solo ven el tab "General" y nunca llegan a los otros 4.
 import { getDefaultSchedules, ScheduleDayItem } from './EmployeeScheduleForm'
+import { EmployeeRotatingScheduleForm, RotatingScheduleValue } from './EmployeeRotatingScheduleForm'
 import { toast } from '@/components/ui/toast'
 import { UserCheck, Building2, DollarSign, Clock, FileCheck2, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -20,6 +21,35 @@ const tabSkeleton = (
     <Loader2 className="h-5 w-5 animate-spin" />
   </div>
 )
+
+// Antes definido dentro de EmployeeForm: un componente redefinido en cada
+// render es un tipo distinto para React en cada pasada, así que remonta (en
+// vez de re-renderizar) su contenido cada vez — pierde cualquier estado local
+// que tuviera y es más costoso de lo necesario. Ahora vive a nivel de módulo
+// y recibe `completeness` como prop en vez de leerlo por closure.
+function TabPercentBadge({
+  tab,
+  completeness,
+}: {
+  tab: EmployeeTabKey
+  completeness: EmployeeCompleteness
+}) {
+  const t = completeness.tabs[tab]
+  const tone = completenessTone(t.percent)
+  return (
+    <span
+      title={t.missing.length ? `Falta: ${t.missing.join(', ')}` : 'Completo'}
+      className={cn(
+        'ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none tabular-nums',
+        tone === 'complete' && 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+        tone === 'partial' && 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+        tone === 'low' && 'bg-rose-500/15 text-rose-700 dark:text-rose-400'
+      )}
+    >
+      {t.percent}%
+    </span>
+  )
+}
 
 const EmployeeGeneralTab = dynamic(
   () => import('./EmployeeGeneralTab').then((m) => m.EmployeeGeneralTab),
@@ -58,6 +88,8 @@ interface EmployeeFormProps {
   initialSalaries?: EmployeeSalary[]
   initialSchedules?: EmployeeSchedule[]
   initialDocuments?: EmployeeDocument[]
+  rotatingPatterns?: RotatingShiftPattern[]
+  initialRotatingSchedule?: EmployeeRotatingSchedule | null
   readOnly?: boolean
   defaultTab?: string
 }
@@ -70,6 +102,8 @@ export function EmployeeForm({
   initialSalaries = [],
   initialSchedules = [],
   initialDocuments = [],
+  rotatingPatterns: initialRotatingPatterns = [],
+  initialRotatingSchedule = null,
   readOnly = false,
   defaultTab,
 }: EmployeeFormProps) {
@@ -103,6 +137,18 @@ export function EmployeeForm({
   const [schedules, setSchedules] = useState<ScheduleDayItem[]>(() =>
     getDefaultSchedules(initialSchedules)
   )
+
+  // Estado para Horario Rotativo (ver EmployeeRotatingScheduleForm): modo
+  // alterno al horario semanal fijo de arriba, para turnos tipo "4 libres +
+  // 10 trabajo" donde el mismo día de la semana alterna libre/laborable.
+  const [scheduleMode, setScheduleMode] = useState<'weekly' | 'rotating'>(
+    initialRotatingSchedule ? 'rotating' : 'weekly'
+  )
+  const [rotatingPatterns, setRotatingPatterns] = useState<RotatingShiftPattern[]>(initialRotatingPatterns)
+  const [rotatingSchedule, setRotatingSchedule] = useState<RotatingScheduleValue>({
+    patternId: initialRotatingSchedule?.pattern_id ?? null,
+    anchorDate: initialRotatingSchedule?.anchor_date ?? new Date().toISOString().slice(0, 10),
+  })
 
   // Estado para Conceptos Salariales (Sueldo, Bonificación, Extras)
   const [salaries, setSalaries] = useState<SalaryRowItem[]>(() => {
@@ -150,24 +196,6 @@ export function EmployeeForm({
       ),
     [employee, fullName, nationalId, email, status, birthDate, paymentType, salaries, schedules, initialDocuments]
   )
-
-  function TabPercentBadge({ tab }: { tab: EmployeeTabKey }) {
-    const t = completeness.tabs[tab]
-    const tone = completenessTone(t.percent)
-    return (
-      <span
-        title={t.missing.length ? `Falta: ${t.missing.join(', ')}` : 'Completo'}
-        className={cn(
-          'ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none tabular-nums',
-          tone === 'complete' && 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
-          tone === 'partial' && 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
-          tone === 'low' && 'bg-rose-500/15 text-rose-700 dark:text-rose-400'
-        )}
-      >
-        {t.percent}%
-      </span>
-    )
-  }
 
   function addSalaryItem(type: SalaryType = 'Bonificacion') {
     const defaultNames: Record<SalaryType, string> = {
@@ -369,6 +397,28 @@ export function EmployeeForm({
 
           if (scheduleInsertError) console.error('Error insertando horarios:', scheduleInsertError)
         }
+
+        // 2b. Guardar Horario Rotativo (si el modo activo es 'rotating' y hay
+        // un patrón elegido). Se borra la asignación previa primero: si el
+        // usuario cambió a modo semanal o quitó el patrón, no debe quedar un
+        // horario rotativo huérfano compitiendo con el semanal.
+        await supabase
+          .from('employee_rotating_schedules')
+          .delete()
+          .eq('employee_id', savedEmployeeId)
+
+        if (scheduleMode === 'rotating' && rotatingSchedule.patternId) {
+          const { error: rotatingInsertError } = await supabase
+            .from('employee_rotating_schedules')
+            .insert({
+              organization_id: currentOrgId,
+              employee_id: savedEmployeeId,
+              pattern_id: rotatingSchedule.patternId,
+              anchor_date: rotatingSchedule.anchorDate,
+            })
+
+          if (rotatingInsertError) console.error('Error insertando horario rotativo:', rotatingInsertError)
+        }
       }
 
       toast.success(
@@ -412,7 +462,7 @@ export function EmployeeForm({
             <TabsTrigger value="general" className="relative gap-2 text-xs font-semibold cursor-pointer">
               <UserCheck className="h-4 w-4" />
               General
-              <TabPercentBadge tab="general" />
+              <TabPercentBadge tab="general" completeness={completeness} />
               {hasGeneralErrors && (
                 <span className="h-2 w-2 rounded-full bg-destructive animate-pulse ring-2 ring-background" />
               )}
@@ -420,7 +470,7 @@ export function EmployeeForm({
             <TabsTrigger value="company" className="relative gap-2 text-xs font-semibold cursor-pointer">
               <Building2 className="h-4 w-4" />
               Empresa
-              <TabPercentBadge tab="company" />
+              <TabPercentBadge tab="company" completeness={completeness} />
               {hasCompanyErrors && (
                 <span className="h-2 w-2 rounded-full bg-destructive animate-pulse ring-2 ring-background" />
               )}
@@ -428,12 +478,12 @@ export function EmployeeForm({
             <TabsTrigger value="salary" className="gap-2 text-xs font-semibold cursor-pointer">
               <DollarSign className="h-4 w-4" />
               Salario
-              <TabPercentBadge tab="salary" />
+              <TabPercentBadge tab="salary" completeness={completeness} />
             </TabsTrigger>
             <TabsTrigger value="schedule" className="gap-2 text-xs font-semibold cursor-pointer">
               <Clock className="h-4 w-4" />
               Horario
-              <TabPercentBadge tab="schedule" />
+              <TabPercentBadge tab="schedule" completeness={completeness} />
             </TabsTrigger>
             <TabsTrigger
               value="documents"
@@ -496,12 +546,63 @@ export function EmployeeForm({
         </TabsContent>
 
         {/* PESTAÑA 4: HORARIO LABORAL */}
-        <TabsContent value="schedule" keepMounted={!readOnly} className="focus-visible:outline-none">
-          <EmployeeScheduleForm
-            schedules={schedules}
-            onChange={(newSchedules) => setSchedules(newSchedules)}
-            readOnly={readOnly}
-          />
+        <TabsContent value="schedule" keepMounted={!readOnly} className="focus-visible:outline-none space-y-4">
+          {/* Selector Semanal Fijo vs. Rotativo por Ciclo */}
+          <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border text-xs w-fit">
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() => setScheduleMode('weekly')}
+              className={cn(
+                "px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer",
+                scheduleMode === 'weekly' ? "bg-background text-foreground shadow-2xs" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Semanal Fijo
+            </button>
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() => setScheduleMode('rotating')}
+              className={cn(
+                "px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer",
+                scheduleMode === 'rotating' ? "bg-background text-foreground shadow-2xs" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Rotativo por Ciclo
+            </button>
+          </div>
+
+          {scheduleMode === 'weekly' ? (
+            <EmployeeScheduleForm
+              schedules={schedules}
+              onChange={(newSchedules) => setSchedules(newSchedules)}
+              readOnly={readOnly}
+            />
+          ) : (
+            <>
+              <EmployeeRotatingScheduleForm
+                organizationId={currentOrgId}
+                patterns={rotatingPatterns}
+                value={rotatingSchedule}
+                onChange={setRotatingSchedule}
+                onPatternsChange={setRotatingPatterns}
+                readOnly={readOnly}
+              />
+              {/* El horario base (horas de entrada/salida) sigue viviendo aquí
+                  debajo: el rotativo solo decide qué días son libres. */}
+              <div className="pt-2 border-t">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">
+                  Horario base (horas de los días laborables del ciclo)
+                </p>
+                <EmployeeScheduleForm
+                  schedules={schedules}
+                  onChange={(newSchedules) => setSchedules(newSchedules)}
+                  readOnly={readOnly}
+                />
+              </div>
+            </>
+          )}
         </TabsContent>
 
         {/* PESTAÑA 5: DOCUMENTACIÓN & EXPEDIENTE DE INGRESO */}

@@ -10,6 +10,7 @@ import { DeductionTypeOption } from '@/lib/deductions/constants'
 import { Plus, Loader2 } from 'lucide-react'
 import { Employee } from '@/types/employee'
 import { cn } from '@/lib/utils'
+import { useNewItemShortcut } from '@/hooks/use-new-item-shortcut'
 
 // Wizards pesados (570-735 líneas c/u) que solo se muestran condicionalmente
 // al elegir un tipo de descuento: se cargan bajo demanda para no inflar el
@@ -66,6 +67,12 @@ export function NewDeductionButton({
     }
   }, [dialogOpen])
 
+  // Atajo de teclado "N": abre el mismo selector que el botón.
+  useNewItemShortcut(() => {
+    setActiveView('select')
+    setDialogOpen(true)
+  }, dialogOpen)
+
   function handleSelectType(option: DeductionTypeOption) {
     if (
       option.type === 'faltante_caja' ||
@@ -120,6 +127,7 @@ export function NewDeductionButton({
         }}
         className="gap-2 font-medium cursor-pointer"
         size="sm"
+        title="Atajo: N"
       >
         <Plus className="h-4 w-4" />
         Nuevo Descuento

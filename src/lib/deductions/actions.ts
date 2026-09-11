@@ -28,6 +28,14 @@ export async function getActiveDeliveryActsForEmployee(
 ): Promise<DeliveryActWithAvailableItems[]> {
   const supabase = await createClient()
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return []
+  }
+
   const { data: acts, error } = await supabase
     .from('incidents')
     .select('id, status, metadata')

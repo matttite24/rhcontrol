@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { Incident, IncidentStatus, Organization } from '@/types/employee'
 import {
@@ -17,7 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { INCIDENT_TYPE_OPTIONS } from '@/lib/incidents/constants'
 import { getIncidentCode, INCIDENT_PREFIX_MAP } from '@/lib/incidents/sequence'
 import { IncidentDetailModal } from './IncidentDetailModal'
-import { FileText, ChevronRight, ChevronLeft, Eye } from 'lucide-react'
+import { FileText, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface IncidentsTableClientProps {
@@ -64,13 +64,15 @@ function formatEmissionDate(dateStr?: string | null): string {
 export function IncidentsTableClient({ incidents, organization }: IncidentsTableClientProps) {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
-  const pageSize = 20
 
-  // Si cambia la lista de incidencias (por filtros), volver a la página 1
-  React.useEffect(() => {
-    setCurrentPage(1)
-  }, [incidents.length])
+  // La paginación ya viene resuelta por el servidor (ver PaginationBar en la
+  // page): `incidents` aquí es solo la página actual, no la lista completa.
+  // NOTA: el mapa de códigos de abajo es un fallback solo para incidencias
+  // legacy sin `metadata.document_code` guardado — con paginación, ese
+  // fallback ordena únicamente dentro de la página actual (no todo el
+  // histórico), así que para esos registros antiguos específicos puede
+  // numerar distinto a como lo hacía antes. No afecta a registros con código
+  // ya persistido (la mayoría) ni a datos reales de nómina/incidencias.
 
   // Map secuencial de códigos numéricos (ej. ANT-0001, LLA-0001, ANC-0001) para registros previos
   const incidentCodesMap = useMemo(() => {
@@ -103,12 +105,6 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
     return codeMap
   }, [incidents])
 
-  const totalPages = Math.max(1, Math.ceil(incidents.length / pageSize))
-  const paginatedIncidents = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return incidents.slice(start, start + pageSize)
-  }, [incidents, currentPage, pageSize])
-
   function handleOpenDetail(inc: Incident) {
     const resolvedCode = incidentCodesMap.get(inc.id) || getIncidentCode(inc)
     const enrichedInc: Incident = {
@@ -136,7 +132,7 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedIncidents.map((inc) => {
+            {incidents.map((inc) => {
               const effectiveType = (inc.incident_type === 'otro' && inc.metadata?.sub_type)
                 ? inc.metadata.sub_type
                 : inc.incident_type
@@ -237,54 +233,6 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
             })}
           </TableBody>
         </Table>
-
-        {/* Barra de Paginación */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/20 text-xs">
-            <span className="text-muted-foreground">
-              Mostrando <span className="font-semibold text-foreground">{((currentPage - 1) * pageSize) + 1}</span> a{' '}
-              <span className="font-semibold text-foreground">{Math.min(currentPage * pageSize, incidents.length)}</span> de{' '}
-              <span className="font-semibold text-foreground">{incidents.length}</span> incidencias
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2.5 gap-1 text-xs"
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-                Anterior
-              </Button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <Button
-                    key={page}
-                    variant={page === currentPage ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-8 w-8 p-0 text-xs"
-                    onClick={() => setCurrentPage(page)}
-                    aria-label={`Ir a página ${page}`}
-                    aria-current={page === currentPage ? 'page' : undefined}
-                  >
-                    {page}
-                  </Button>
-                ))}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2.5 gap-1 text-xs"
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Siguiente
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Modal interactivo de Detalle & Aprobación */}

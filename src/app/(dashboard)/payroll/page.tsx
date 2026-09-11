@@ -269,8 +269,12 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
     const hourlyRate = baseSalary > 0 ? (baseSalary / 240) * 1.5 : 3.50
     const overtimeAmount = Number((overtimeHours * hourlyRate).toFixed(2))
 
-    // c. Cálculo de Décimos y Beneficios Sociales Mensualizados (Ecuador)
+    // c. Cálculo de Décimos y Beneficios Sociales Mensualizados (Ecuador).
+    // El Gerente Propietario autoafiliado no tiene relación de dependencia,
+    // así que no le corresponden décimos ni fondos de reserva (calculateEcuadorDecimals
+    // los devuelve en cero cuando isOwnerManager=true).
     const accumulateDecimals = emp.accumulate_decimals === true
+    const isOwnerManager = emp.is_owner_manager === true
     const decimalsCalc = calculateEcuadorDecimals({
       baseSalary,
       overtimeAmount,
@@ -279,6 +283,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       reserveFundsTreatment: emp.reserve_funds || 'pagar_ano',
       hireDate: emp.hire_date,
       payrollDate: endDate,
+      isOwnerManager,
     })
 
     // Total Ingresos (Base + Bonos + Horas Extras + Décimos/Fondos Mensualizados)
@@ -288,7 +293,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
     // Gerente Propietario autoafiliado: 17.60% (todo a su cargo, sin aporte
     // patronal aparte). Relación de dependencia normal: 9.45%.
     const iessTaxable = baseSalary + overtimeAmount + bonuses
-    const iessRate = getIessPersonalRate(emp.is_owner_manager === true)
+    const iessRate = getIessPersonalRate(isOwnerManager)
     const iessPersonal = emp.status === 'activo' ? Number((iessTaxable * iessRate).toFixed(2)) : 0
 
     // g (adelantado). Incidencias del empleado — se necesitan antes para
@@ -456,7 +461,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
 
       iessPersonal,
       iessRate,
-      isOwnerManager: emp.is_owner_manager === true,
+      isOwnerManager,
       iessCode: emp.iess_code ?? null,
       cashShortages,
       inventoryDeductions,

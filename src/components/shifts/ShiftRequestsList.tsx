@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { ShiftRequest, ShiftRequestStatus, Organization } from '@/types/employee'
 import {
@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { SHIFT_REQUEST_TYPE_OPTIONS, SHIFT_REQUEST_STATUS_MAP } from '@/lib/shifts/constants'
 import { ShiftRequestDetailModal } from './ShiftRequestDetailModal'
-import { Clock, RefreshCw, FileText, ChevronRight, ChevronLeft, Eye } from 'lucide-react'
+import { Clock, RefreshCw, FileText, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getShiftRequestCode, INCIDENT_PREFIX_MAP } from '@/lib/incidents/sequence'
 import { getInitials } from '@/lib/shifts/format'
@@ -46,13 +46,11 @@ function formatEmissionDate(dateStr?: string | null): string {
 export function ShiftRequestsList({ requests, organization }: ShiftRequestsListProps) {
   const [selectedRequest, setSelectedRequest] = useState<ShiftRequest | null>(null)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
-  const pageSize = 20
 
-  // Si cambia la lista de solicitudes (por filtros), volver a la página 1
-  React.useEffect(() => {
-    setCurrentPage(1)
-  }, [requests.length])
+  // La paginación ya viene resuelta por el servidor (ver PaginationBar en la
+  // page): `requests` aquí es solo la página actual, no la lista completa.
+  // NOTA (igual que en IncidentsTableClient): el fallback de código legacy de
+  // abajo solo ordena dentro de la página actual, no todo el histórico.
 
   // Map precalculado para asignar código numérico secuencial (ej. PER-0001, HEX-0001)
   // a registros antiguos creados sin sequence_number en la base de datos
@@ -89,12 +87,6 @@ export function ShiftRequestsList({ requests, organization }: ShiftRequestsListP
     }
     return codeMap
   }, [requests])
-
-  const totalPages = Math.max(1, Math.ceil(requests.length / pageSize))
-  const paginatedRequests = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return requests.slice(start, start + pageSize)
-  }, [requests, currentPage, pageSize])
 
   function handleOpenDetail(req: ShiftRequest) {
     const resolvedCode = requestCodesMap.get(req.id) || getShiftRequestCode(req)
@@ -140,7 +132,7 @@ export function ShiftRequestsList({ requests, organization }: ShiftRequestsListP
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedRequests.map((req) => {
+            {requests.map((req) => {
               const isLeavePermission = req.request_type === 'permiso_laboral' || req.metadata?.sub_type === 'permiso_laboral'
               const resolvedType = isLeavePermission ? 'permiso_laboral' : req.request_type
               const typeMeta = SHIFT_REQUEST_TYPE_OPTIONS.find((t) => t.type === resolvedType)
@@ -253,54 +245,6 @@ export function ShiftRequestsList({ requests, organization }: ShiftRequestsListP
             })}
           </TableBody>
         </Table>
-
-        {/* Barra de Paginación */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/20 text-xs">
-            <span className="text-muted-foreground">
-              Mostrando <span className="font-semibold text-foreground">{((currentPage - 1) * pageSize) + 1}</span> a{' '}
-              <span className="font-semibold text-foreground">{Math.min(currentPage * pageSize, requests.length)}</span> de{' '}
-              <span className="font-semibold text-foreground">{requests.length}</span> solicitudes
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2.5 gap-1 text-xs"
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-                Anterior
-              </Button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <Button
-                    key={page}
-                    variant={page === currentPage ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-8 w-8 p-0 text-xs"
-                    onClick={() => setCurrentPage(page)}
-                    aria-label={`Ir a página ${page}`}
-                    aria-current={page === currentPage ? 'page' : undefined}
-                  >
-                    {page}
-                  </Button>
-                ))}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2.5 gap-1 text-xs"
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Siguiente
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Modal de Detalle, Impresión y Aprobación */}

@@ -358,6 +358,18 @@ export async function removeMemberAction(
  * Requiere SUPABASE_SERVICE_ROLE_KEY. Si no está, devuelve
  * `exists: null` y la UI cae al modo por defecto (crear cuenta).
  */
+/**
+ * Público por diseño (sin getUser()): se llama desde /invite/[token] ANTES
+ * de que el invitado tenga sesión, para decidir si mostrarle el formulario
+ * de login o el de registro. No puede exigir autenticación sin romper ese
+ * flujo.
+ *
+ * Riesgo aceptado: expone email enumeration (cualquiera puede consultar si
+ * un correo arbitrario tiene cuenta). Se considera bajo — no revela más que
+ * un booleano, sin PII adicional, y es el mismo patrón que "¿olvidaste tu
+ * contraseña?" en la mayoría de apps. No mitigar con rate limiting por ahora;
+ * revisar si el abuso se vuelve un problema real.
+ */
 export async function checkEmailHasAccountAction(
   email: string
 ): Promise<{ exists: boolean | null }> {

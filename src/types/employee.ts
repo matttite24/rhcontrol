@@ -166,6 +166,37 @@ export interface EmployeeSchedule {
   created_at: string
 }
 
+/**
+ * Patrón de horario rotativo reutilizable (ej. "4 libres + 10 trabajo").
+ * `days_off` son offsets 0-indexados dentro del ciclo (0 = día de la fecha
+ * ancla); cualquier offset no listado se considera laborable.
+ */
+export interface RotatingShiftPattern {
+  id: string
+  organization_id: string
+  name: string
+  cycle_length: number
+  days_off: number[]
+  created_at: string
+  updated_at: string
+}
+
+export type RotatingShiftPatternInsert = Omit<RotatingShiftPattern, 'id' | 'created_at' | 'updated_at'>
+
+/** Asignación de un patrón rotativo a un empleado, con su propia fecha ancla. */
+export interface EmployeeRotatingSchedule {
+  id: string
+  organization_id: string
+  employee_id: string
+  pattern_id: string
+  anchor_date: string
+  created_at: string
+  updated_at: string
+  pattern?: RotatingShiftPattern
+}
+
+export type EmployeeRotatingScheduleInsert = Omit<EmployeeRotatingSchedule, 'id' | 'created_at' | 'updated_at' | 'pattern'>
+
 export type IncidentType =
   | 'actividad_no_conforme'
   | 'llamado_atencion'

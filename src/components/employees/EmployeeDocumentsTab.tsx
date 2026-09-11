@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Employee, EmployeeDocument, EmployeeDocType } from '@/types/employee'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -99,21 +99,50 @@ export function EmployeeDocumentsTab({
     })
   })
 
+  // Blob URLs creados localmente con createObjectURL (previsualización antes
+  // de subir a Storage): el navegador no los libera solo, hay que llamar
+  // revokeObjectURL explícitamente o quedan retenidos en memoria mientras
+  // dure la pestaña. Solo se trackean los que este componente creó (con
+  // `blob:` prefix) — un fileUrl existente que venga de Storage (http(s))
+  // nunca debe revocarse, apunta a un recurso real, no a un blob local.
+  const createdBlobUrls = useRef<Set<string>>(new Set())
+
+  function revokeIfOwnBlob(url: string | null) {
+    if (url && createdBlobUrls.current.has(url)) {
+      URL.revokeObjectURL(url)
+      createdBlobUrls.current.delete(url)
+    }
+  }
+
+  // Libera cualquier blob URL que quede vivo si el componente se desmonta
+  // (ej. el usuario navega fuera) sin haber quitado el archivo manualmente.
+  useEffect(() => {
+    return () => {
+      createdBlobUrls.current.forEach((url) => URL.revokeObjectURL(url))
+      createdBlobUrls.current.clear()
+    }
+  }, [])
+
   function handleFakeUpload(type: EmployeeDocType, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
 
+    const newUrl = URL.createObjectURL(file)
+    createdBlobUrls.current.add(newUrl)
+
     setDocList((prev) =>
-      prev.map((d) =>
-        d.type === type
-          ? {
-              ...d,
-              fileName: file.name,
-              fileUrl: URL.createObjectURL(file),
-              uploadedAt: new Date().toISOString(),
-            }
-          : d
-      )
+      prev.map((d) => {
+        if (d.type !== type) return d
+        // Reemplazo de un archivo ya cargado: libera el blob anterior antes
+        // de perder la referencia, si era uno creado por este componente.
+        revokeIfOwnBlob(d.fileUrl)
+        return {
+          ...d,
+          fileName: file.name,
+          fileUrl: newUrl,
+          uploadedAt: new Date().toISOString(),
+        }
+      })
     )
 
     toast.success('Documento cargado', `Se adjuntó el archivo: ${file.name}`)
@@ -121,11 +150,11 @@ export function EmployeeDocumentsTab({
 
   function handleRemove(type: EmployeeDocType) {
     setDocList((prev) =>
-      prev.map((d) =>
-        d.type === type
-          ? { ...d, fileName: null, fileUrl: null, uploadedAt: null }
-          : d
-      )
+      prev.map((d) => {
+        if (d.type !== type) return d
+        revokeIfOwnBlob(d.fileUrl)
+        return { ...d, fileName: null, fileUrl: null, uploadedAt: null }
+      })
     )
     toast.info('Documento removido', 'Se quitó el archivo del expediente.')
   }

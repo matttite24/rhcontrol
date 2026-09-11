@@ -1,9 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
-import { PageHeader } from '@/components/layout/PageHeader'
-import { NewShiftRequestButton } from '@/components/shifts/NewShiftRequestButton'
 import { ShiftCalendarView } from '@/components/shifts/ShiftCalendarView'
-import { Employee, EmployeeSchedule, ShiftRequest, Holiday } from '@/types/employee'
+import { Employee, EmployeeSchedule, ShiftRequest, Holiday, EmployeeRotatingSchedule } from '@/types/employee'
 import { AlertTriangle } from 'lucide-react'
 import { NoActiveOrg } from '@/components/org/NoActiveOrg'
 
@@ -77,6 +75,7 @@ export default async function ShiftCalendarPage({ searchParams }: ShiftCalendarP
     { data: datedData, error: requestsError },
     { data: vacationData, error: vacationError },
     { data: holidaysData, error: holidaysError },
+    { data: rotatingSchedulesData, error: rotatingSchedulesError },
   ] = await Promise.all([
     // Departamentos disponibles (deduplicados y sin vacíos por seguridad)
     supabase
@@ -115,6 +114,13 @@ export default async function ShiftCalendarPage({ searchParams }: ShiftCalendarP
       .gte('date', toIsoDate(requestsRangeStart))
       .lte('date', toIsoDate(requestsRangeEnd))
       .order('date', { ascending: true }),
+    // Horarios rotativos asignados (ver rotating-pattern.ts): se necesita el
+    // patrón completo (cycle_length + days_off) para calcular libre/laborable
+    // por fecha en el cliente, no solo la asignación.
+    supabase
+      .from('employee_rotating_schedules')
+      .select('*, pattern:rotating_shift_patterns(*)')
+      .eq('organization_id', currentOrg.id),
   ])
 
   const departments = Array.from(
@@ -132,8 +138,10 @@ export default async function ShiftCalendarPage({ searchParams }: ShiftCalendarP
   // un fallo de red/RLS silencioso podría hacer creer al admin que no hay
   // empleados registrados cuando en realidad la consulta nunca respondió.
   const hasLoadError = Boolean(
-    deptError || employeesError || requestsError || vacationError || holidaysError
+    deptError || employeesError || requestsError || vacationError || holidaysError || rotatingSchedulesError
   )
+
+  const rotatingSchedules = (rotatingSchedulesData as EmployeeRotatingSchedule[]) || []
 
   const filteredEmployees = ((employeesData as (Employee & { schedules: EmployeeSchedule[] })[]) || []).filter((emp) => {
     if (!params.q) return true
@@ -147,19 +155,9 @@ export default async function ShiftCalendarPage({ searchParams }: ShiftCalendarP
 
   return (
     <div className="flex flex-col flex-1 min-h-screen min-w-0 w-full overflow-x-hidden">
-      {/* Header oficial con botón de Nueva Solicitud */}
-      <PageHeader
-        title="Calendario de Turnos"
-        description={`${filteredEmployees.length} ${filteredEmployees.length === 1 ? 'empleado' : 'empleados'}`}
-        action={
-          <NewShiftRequestButton
-            organizationId={currentOrg.id}
-            organizationName={currentOrg.name}
-            employees={filteredEmployees}
-          />
-        }
-      />
-
+      {/* Sin PageHeader: el título/contador y el botón de crear se movieron
+          a la barra de controles del calendario, para recuperar altura
+          vertical de la tabla — la que más se beneficia de espacio aquí. */}
       {hasLoadError && (
         <div className="mx-6 mt-4 flex items-center gap-2.5 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -178,6 +176,9 @@ export default async function ShiftCalendarPage({ searchParams }: ShiftCalendarP
           departments={departments}
           currentDepartment={params.department}
           holidays={holidays}
+          rotatingSchedules={rotatingSchedules}
+          organizationId={currentOrg.id}
+          organizationName={currentOrg.name}
         />
       </div>
     </div>

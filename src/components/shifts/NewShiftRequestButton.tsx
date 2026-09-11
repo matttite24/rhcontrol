@@ -9,6 +9,7 @@ import { SelectShiftRequestTypeModal } from './SelectShiftRequestTypeModal'
 import { Plus, Loader2 } from 'lucide-react'
 import { ShiftRequestType, Employee } from '@/types/employee'
 import { cn } from '@/lib/utils'
+import { useNewItemShortcut } from '@/hooks/use-new-item-shortcut'
 
 // Wizards pesados (800-1100 líneas c/u) que solo se muestran condicionalmente
 // al elegir un tipo de solicitud: se cargan bajo demanda para no inflar el
@@ -79,6 +80,12 @@ export function NewShiftRequestButton({
     }
   }, [searchParams, router])
 
+  // Atajo de teclado "N": abre el mismo selector que el botón.
+  useNewItemShortcut(() => {
+    setActiveView('select')
+    setDialogOpen(true)
+  }, dialogOpen)
+
   function handleSelectType(type: ShiftRequestType) {
     if (
       type === 'horas_extras' ||
@@ -133,6 +140,7 @@ export function NewShiftRequestButton({
         }}
         size="sm"
         className="gap-2 font-medium cursor-pointer"
+        title="Atajo: N"
       >
         <Plus className="h-4 w-4" />
         Novedad

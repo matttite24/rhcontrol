@@ -166,10 +166,16 @@ export function PayrollDetailModal({
                 <div className="min-w-0">
                   <SheetTitle className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2 truncate">
                     <span className="truncate">{item.fullName}</span>
-                    {!item.accumulateDecimals && (
-                      <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0">
-                        Décimos Mensualizados
+                    {item.isOwnerManager ? (
+                      <Badge variant="secondary" className="text-[10px] bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20 shrink-0">
+                        Gerente Propietario
                       </Badge>
+                    ) : (
+                      !item.accumulateDecimals && (
+                        <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0">
+                          Décimos Mensualizados
+                        </Badge>
+                      )
                     )}
                   </SheetTitle>
                   <SheetDescription className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 font-mono truncate">
@@ -289,28 +295,36 @@ export function PayrollDetailModal({
                       </div>
                     )}
 
-                    {/* Rubros de Ley Mensualizados en Ecuador */}
-                    {!item.accumulateDecimals && (
-                      <>
-                        {item.decimoTercero > 0 && (
-                          <div className="flex justify-between items-center py-1 border-b border-border/40 bg-emerald-500/5 px-1.5 rounded">
-                            <span className="text-emerald-700 dark:text-emerald-400 font-medium">13er Sueldo (Mensualizado)</span>
-                            <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">+${item.decimoTercero.toFixed(2)}</span>
-                          </div>
-                        )}
-                        {item.decimoCuarto > 0 && (
-                          <div className="flex justify-between items-center py-1 border-b border-border/40 bg-emerald-500/5 px-1.5 rounded">
-                            <span className="text-emerald-700 dark:text-emerald-400 font-medium">14to Sueldo (Mensualizado)</span>
-                            <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">+${item.decimoCuarto.toFixed(2)}</span>
-                          </div>
-                        )}
-                        {item.fondosReserva > 0 && (
-                          <div className="flex justify-between items-center py-1 border-b border-border/40 bg-emerald-500/5 px-1.5 rounded">
-                            <span className="text-emerald-700 dark:text-emerald-400 font-medium">Fondos de Reserva (8.33%)</span>
-                            <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">+${item.fondosReserva.toFixed(2)}</span>
-                          </div>
-                        )}
-                      </>
+                    {/* Rubros de Ley Mensualizados en Ecuador — no aplican al
+                        Gerente Propietario autoafiliado (sin relación de
+                        dependencia, no le corresponden por Código del Trabajo) */}
+                    {item.isOwnerManager ? (
+                      <div className="py-1.5 px-1.5 text-[11px] text-muted-foreground italic">
+                        No aplica Décimos ni Fondos de Reserva: autoafiliación IESS sin relación de dependencia.
+                      </div>
+                    ) : (
+                      !item.accumulateDecimals && (
+                        <>
+                          {item.decimoTercero > 0 && (
+                            <div className="flex justify-between items-center py-1 border-b border-border/40 bg-emerald-500/5 px-1.5 rounded">
+                              <span className="text-emerald-700 dark:text-emerald-400 font-medium">13er Sueldo (Mensualizado)</span>
+                              <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">+${item.decimoTercero.toFixed(2)}</span>
+                            </div>
+                          )}
+                          {item.decimoCuarto > 0 && (
+                            <div className="flex justify-between items-center py-1 border-b border-border/40 bg-emerald-500/5 px-1.5 rounded">
+                              <span className="text-emerald-700 dark:text-emerald-400 font-medium">14to Sueldo (Mensualizado)</span>
+                              <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">+${item.decimoCuarto.toFixed(2)}</span>
+                            </div>
+                          )}
+                          {item.fondosReserva > 0 && (
+                            <div className="flex justify-between items-center py-1 border-b border-border/40 bg-emerald-500/5 px-1.5 rounded">
+                              <span className="text-emerald-700 dark:text-emerald-400 font-medium">Fondos de Reserva (8.33%)</span>
+                              <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">+${item.fondosReserva.toFixed(2)}</span>
+                            </div>
+                          )}
+                        </>
+                      )
                     )}
 
                     {item.details.salaryItems

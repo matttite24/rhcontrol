@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import {
   Table,
@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { DEDUCTION_TYPE_OPTIONS } from '@/lib/deductions/constants'
 import { Deduction, DeductionStatus, Organization } from '@/types/employee'
-import { DollarSign, Repeat, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import { DollarSign, Repeat, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DeductionDetailModal } from './DeductionDetailModal'
 
@@ -43,19 +43,9 @@ function getInitials(name: string) {
 export function DeductionsTableClient({ deductions, organization }: DeductionsTableClientProps) {
   const [selectedDeduction, setSelectedDeduction] = useState<Deduction | null>(null)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
-  const [currentPage, setCurrentPage] = useState(1)
-  const pageSize = 20
 
-  // Si cambia la lista de descuentos (por filtros), volver a la página 1
-  React.useEffect(() => {
-    setCurrentPage(1)
-  }, [deductions.length])
-
-  const totalPages = Math.max(1, Math.ceil(deductions.length / pageSize))
-  const paginatedDeductions = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return deductions.slice(start, start + pageSize)
-  }, [deductions, currentPage, pageSize])
+  // La paginación ya viene resuelta por el servidor (ver PaginationBar en la
+  // page): `deductions` aquí es solo la página actual, no la lista completa.
 
   function handleOpenDetail(item: Deduction) {
     setSelectedDeduction(item)
@@ -78,7 +68,7 @@ export function DeductionsTableClient({ deductions, organization }: DeductionsTa
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedDeductions.map((item) => {
+            {deductions.map((item) => {
               const typeMeta = DEDUCTION_TYPE_OPTIONS.find((t) => t.type === item.deduction_type)
               const TypeIcon = typeMeta?.icon || DollarSign
               const status = statusConfig[item.status] ?? statusConfig.pendiente
@@ -185,54 +175,6 @@ export function DeductionsTableClient({ deductions, organization }: DeductionsTa
             })}
           </TableBody>
         </Table>
-
-        {/* Barra de Paginación */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-3 border-t bg-muted/20 text-xs">
-            <span className="text-muted-foreground">
-              Mostrando <span className="font-semibold text-foreground">{((currentPage - 1) * pageSize) + 1}</span> a{' '}
-              <span className="font-semibold text-foreground">{Math.min(currentPage * pageSize, deductions.length)}</span> de{' '}
-              <span className="font-semibold text-foreground">{deductions.length}</span> registros
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2.5 gap-1 text-xs"
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-                Anterior
-              </Button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <Button
-                    key={page}
-                    variant={page === currentPage ? 'default' : 'ghost'}
-                    size="sm"
-                    className="h-8 w-8 p-0 text-xs"
-                    onClick={() => setCurrentPage(page)}
-                    aria-label={`Ir a página ${page}`}
-                    aria-current={page === currentPage ? 'page' : undefined}
-                  >
-                    {page}
-                  </Button>
-                ))}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2.5 gap-1 text-xs"
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Siguiente
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
 
       <DeductionDetailModal

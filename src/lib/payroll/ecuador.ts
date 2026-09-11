@@ -124,6 +124,7 @@ export function calculateEcuadorDecimals({
   hireDate = null,
   payrollDate,
   sbu = ECUADOR_SBU_DEFAULT,
+  isOwnerManager = false,
 }: {
   baseSalary: number
   overtimeAmount?: number
@@ -133,27 +134,37 @@ export function calculateEcuadorDecimals({
   hireDate?: string | null
   payrollDate?: string | Date
   sbu?: number
+  /**
+   * Gerente Propietario autoafiliado al IESS (sin relación de dependencia).
+   * Décimo Tercero, Décimo Cuarto y Fondos de Reserva son beneficios del
+   * Código del Trabajo exclusivos de relación de dependencia laboral — no
+   * aplican a este régimen, por lo que se devuelven en cero.
+   */
+  isOwnerManager?: boolean
 }) {
   // Remuneración computable para décimos (Sueldo + Bonos + Horas Extras)
   const taxableIncome = Math.max(0, baseSalary + overtimeAmount + bonuses)
 
   // 13er Sueldo Mensualizado = 1/12 de los ingresos imponibles del mes
-  const decimoTercero = !accumulateDecimals
+  const decimoTercero = !accumulateDecimals && !isOwnerManager
     ? Number((taxableIncome / 12).toFixed(2))
     : 0
 
   // 14to Sueldo Mensualizado = 1/12 de 1 SBU vigente fijado
   const activeSbu = sbu > 0 ? sbu : ECUADOR_SBU_DEFAULT
-  const decimoCuarto = !accumulateDecimals
+  const decimoCuarto = !accumulateDecimals && !isOwnerManager
     ? Number((activeSbu / 12).toFixed(2))
     : 0
 
   // Evaluación de Fondos de Reserva según fecha de ingreso y ajuste
-  const reserveCheck = checkReserveFundsEligibility({
-    hireDate,
-    payrollDate,
-    treatment: reserveFundsTreatment,
-  })
+  // (no aplica al Gerente Propietario: no tiene relación de dependencia)
+  const reserveCheck = isOwnerManager
+    ? { eligible: false, reason: 'gerente_propietario' as const, hasCompletedOneYear: false }
+    : checkReserveFundsEligibility({
+        hireDate,
+        payrollDate,
+        treatment: reserveFundsTreatment,
+      })
 
   const fondosReserva = reserveCheck.eligible
     ? Number((taxableIncome * RESERVE_FUNDS_RATE).toFixed(2))
