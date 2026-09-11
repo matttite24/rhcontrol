@@ -1,12 +1,12 @@
 import { buttonVariants } from '@/components/ui/button'
 import { EmployeeForm } from '@/components/employees/EmployeeForm'
+import { EmployeeFormSubmitButton } from '@/components/employees/EmployeeFormSubmitButton'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { Department, Position } from '@/types/employee'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Building2, Check } from 'lucide-react'
+import { Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default async function NewEmployeePage() {
@@ -57,15 +57,7 @@ export default async function NewEmployeePage() {
               Cancelar
             </Link>
 
-            <Button
-              type="submit"
-              form="employee-form"
-              size="sm"
-              className="shadow-sm"
-            >
-              <Check className="h-4 w-4 mr-1.5" />
-              Guardar Empleado
-            </Button>
+            <EmployeeFormSubmitButton formId="employee-form" label="Guardar Empleado" />
           </div>
         }
       />

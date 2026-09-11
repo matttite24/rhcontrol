@@ -4,11 +4,11 @@ import { notFound } from 'next/navigation'
 import { buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmployeeForm } from '@/components/employees/EmployeeForm'
+import { EmployeeFormSubmitButton } from '@/components/employees/EmployeeFormSubmitButton'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Department, Position } from '@/types/employee'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Building2, Check } from 'lucide-react'
+import { Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default async function EditEmployeePage({
@@ -111,15 +111,7 @@ export default async function EditEmployeePage({
               Cancelar
             </Link>
 
-            <Button
-              type="submit"
-              form="employee-form"
-              size="sm"
-              className="shadow-sm"
-            >
-              <Check className="h-4 w-4 mr-1.5" />
-              Guardar Cambios
-            </Button>
+            <EmployeeFormSubmitButton formId="employee-form" label="Guardar Cambios" />
           </div>
         }
       />

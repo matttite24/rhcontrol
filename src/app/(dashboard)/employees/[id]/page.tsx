@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { EmployeeForm } from '@/components/employees/EmployeeForm'
 import { EditEmployeeButton } from '@/components/employees/EditEmployeeButton'
+import { DeleteEmployeeButton } from '@/components/employees/DeleteEmployeeButton'
 import { EmployeeSalary, EmployeeSchedule, EmployeeDocument } from '@/types/employee'
 import Link from 'next/link'
 import { ArrowLeft, Building2 } from 'lucide-react'
@@ -102,6 +103,7 @@ export default async function EmployeeProfilePage({
               Volver
             </Link>
             <EditEmployeeButton employeeId={employee.id} />
+            <DeleteEmployeeButton employeeId={employee.id} employeeName={employee.full_name} />
           </div>
         }
       />

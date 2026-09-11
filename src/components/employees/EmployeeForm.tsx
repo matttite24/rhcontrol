@@ -204,10 +204,26 @@ export function EmployeeForm({
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+
+    // Guard contra doble submit: un doble clic (o Enter + clic) en el botón
+    // "Guardar" —que vive fuera de este componente, en el header de la
+    // página— disparaba este handler dos veces mientras el primer guardado
+    // aún corría, insertando el empleado por duplicado. El botón externo
+    // también se deshabilita al recibir el evento 'submit' del form, pero
+    // este guard es la garantía real: no depende de que el otro componente
+    // reaccione a tiempo.
+    if (loading) return
     setLoading(true)
 
     const form = e.currentTarget
     const data = new FormData(form)
+
+    // Avisa al botón "Guardar" externo (EmployeeFormSubmitButton, que vive
+    // fuera de este componente) que ya puede reactivarse.
+    const finish = () => {
+      setLoading(false)
+      form.dispatchEvent(new CustomEvent('employee-form:done'))
+    }
 
     const full_name = (data.get('full_name') as string)?.trim() || fullName.trim()
     const national_id = (data.get('national_id') as string)?.trim() || nationalId.trim()
@@ -223,7 +239,7 @@ export function EmployeeForm({
 
     if (missing.length > 0) {
       setInvalidFields(missing)
-      setLoading(false)
+      finish()
 
       toast.error(
         'Campos obligatorios incompletos',
@@ -376,7 +392,7 @@ export function EmployeeForm({
         (err as { message?: string })?.message || 'Ocurrió un error inesperado al guardar.'
       )
     } finally {
-      setLoading(false)
+      finish()
     }
   }
 
