@@ -324,8 +324,22 @@ export function ShiftCalendarView({
   // visual. Se agrupa solo si NO hay un filtro de departamento activo (con
   // filtro ya son todos del mismo departamento, el encabezado sería redundante).
   type EmployeeRow =
-    | { kind: 'group'; department: string; count: number }
+    | { kind: 'group'; department: string; count: number; collapsed: boolean }
     | { kind: 'employee'; employee: EmployeeWithSchedule }
+
+  // Departamentos colapsados por el usuario (toca el separador de grupo para
+  // ocultar/mostrar sus filas). Un Set de nombres alcanza: no necesita
+  // persistir entre sesiones, solo mientras se navega el calendario.
+  const [collapsedDepartments, setCollapsedDepartments] = useState<Set<string>>(new Set())
+
+  function toggleDepartmentCollapsed(department: string) {
+    setCollapsedDepartments((prev) => {
+      const next = new Set(prev)
+      if (next.has(department)) next.delete(department)
+      else next.add(department)
+      return next
+    })
+  }
 
   const groupedRows = useMemo<EmployeeRow[]>(() => {
     // Sin agrupar: ya sea porque el usuario lo desactivó, o porque el filtro
@@ -347,17 +361,22 @@ export function ShiftCalendarView({
 
     const rows: EmployeeRow[] = []
     let lastDept: string | null = null
+    let deptIsCollapsed = false
     for (const employee of sorted) {
       const dept = employee.department || 'Sin departamento'
       if (dept !== lastDept) {
         const count = sorted.filter((e) => (e.department || 'Sin departamento') === dept).length
-        rows.push({ kind: 'group', department: dept, count })
+        deptIsCollapsed = collapsedDepartments.has(dept)
+        rows.push({ kind: 'group', department: dept, count, collapsed: deptIsCollapsed })
         lastDept = dept
       }
+      // Departamento colapsado: se omiten sus filas de empleado, pero el
+      // separador de grupo sigue en la lista para poder re-expandirlo.
+      if (deptIsCollapsed) continue
       rows.push({ kind: 'employee', employee })
     }
     return rows
-  }, [employees, currentDepartment, groupByDepartment])
+  }, [employees, currentDepartment, groupByDepartment, collapsedDepartments])
 
   // Índice O(1) de solicitudes por empleado+fecha, construido una sola vez
   // por cambio de `requests` (no en cada celda de la tabla, ver `buildRequestIndex`)
@@ -664,9 +683,14 @@ export function ShiftCalendarView({
             )}
           >
             <thead>
-              <tr className="border-b bg-muted/40 text-xs">
+              {/* Fondo con color propio (no un token tan sutil como bg-muted,
+                  que en varios temas es casi idéntico al fondo base) para que
+                  la fila de fechas se lea inequívocamente como un encabezado
+                  distinto al cuerpo de la tabla, incluso con las celdas de
+                  hoy/feriado/weekend del cuerpo activas. */}
+              <tr className="border-b-2 border-border bg-slate-200 dark:bg-slate-800 text-xs">
                 {/* Celda Empleado con Popover de Filtro por Departamento */}
-                <th className="p-3 pl-6 font-semibold min-w-[260px] max-w-[300px] sticky left-0 bg-muted z-10 border-r border-border/40">
+                <th className="p-3 pl-6 font-semibold min-w-[320px] max-w-[360px] sticky left-0 bg-slate-200 dark:bg-slate-800 z-10 border-r border-border/40">
                   <Popover>
                     <PopoverTrigger
                       render={
@@ -738,9 +762,12 @@ export function ShiftCalendarView({
                       onClick={isHoliday ? () => toast.info('Día Feriado', holidayName) : undefined}
                       className={cn(
                         "p-2 text-center font-medium border-l border-border/50 min-w-[110px]",
-                        isToday && "bg-primary/15 text-primary font-bold ring-1 ring-inset ring-primary/30",
-                        isWeekend && !isToday && !isHoliday && "bg-slate-500/[0.07] dark:bg-slate-400/[0.08]",
-                        isHoliday && !isToday && "bg-rose-500/10 cursor-pointer"
+                        isToday && "bg-primary/20 text-primary font-bold ring-1 ring-inset ring-primary/40",
+                        // Contraste ajustado contra el nuevo fondo sólido del header
+                        // (slate-200/800): las opacidades pensadas para bg-muted quedaban
+                        // planas aquí.
+                        isWeekend && !isToday && !isHoliday && "bg-slate-300/60 dark:bg-slate-950/40",
+                        isHoliday && !isToday && "bg-rose-500/20 cursor-pointer"
                       )}
                       title={holidayName ? `Feriado: ${holidayName}` : undefined}
                     >
@@ -782,9 +809,23 @@ export function ShiftCalendarView({
                     // fuera de vista al hacer scroll horizontal como ocurre cuando
                     // el sticky se aplica sobre una celda que abarca toda la fila.
                     return (
-                      <tr key={`group-${row.department}`} className="bg-muted/60">
-                        <td className="sticky left-0 z-10 px-6 py-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-muted/60 border-y border-r border-border/60 whitespace-nowrap">
-                          {row.department}
+                      <tr
+                        key={`group-${row.department}`}
+                        onClick={() => toggleDepartmentCollapsed(row.department)}
+                        className="bg-muted/60 cursor-pointer [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/80 transition-colors duration-150 ease-out motion-reduce:transition-none"
+                        aria-expanded={!row.collapsed}
+                        title={row.collapsed ? `Mostrar ${row.department}` : `Ocultar ${row.department}`}
+                      >
+                        <td className="sticky left-0 z-10 px-6 py-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-muted/60 border-y border-r border-border/60 whitespace-nowrap select-none">
+                          <span className="inline-flex items-center gap-1.5">
+                            <ChevronRight
+                              className={cn(
+                                "h-3 w-3 shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none",
+                                !row.collapsed && "rotate-90"
+                              )}
+                            />
+                            {row.department}
+                          </span>
                           <span className="ml-1.5 font-normal normal-case text-muted-foreground/70">
                             ({row.count} {row.count === 1 ? 'empleado' : 'empleados'})
                           </span>
@@ -814,10 +855,10 @@ export function ShiftCalendarView({
                             </Avatar>
                           </Link>
                           <div className="flex flex-col min-w-0">
-                            <span className="font-semibold text-foreground truncate max-w-[210px]" title={emp.full_name}>
+                            <span className="font-semibold text-foreground truncate max-w-[270px]" title={emp.full_name}>
                               {emp.full_name}
                             </span>
-                            <span className="text-[11px] text-muted-foreground truncate max-w-[210px]" title={emp.position || undefined}>
+                            <span className="text-[11px] text-muted-foreground truncate max-w-[270px]" title={emp.position || undefined}>
                               {emp.position || '—'}
                             </span>
                           </div>
