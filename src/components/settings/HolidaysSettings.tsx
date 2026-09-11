@@ -17,12 +17,26 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Trash2, Loader2, CalendarHeart } from 'lucide-react'
+import { Plus, Trash2, Loader2, CalendarHeart, Sparkles, Check } from 'lucide-react'
 
 interface HolidaysSettingsProps {
   currentOrgId: string
   holidays: Holiday[]
 }
+
+// Feriados fijos oficiales de Ecuador (misma fecha calendario todos los años),
+// según el Código del Trabajo. Los de fecha móvil (Carnaval, Viernes Santo)
+// se excluyen a propósito: no tienen un mes/día fijo que sugerir aquí.
+const FIXED_HOLIDAYS: { month: number; day: number; name: string }[] = [
+  { month: 1, day: 1, name: 'Año Nuevo' },
+  { month: 5, day: 1, name: 'Día del Trabajo' },
+  { month: 5, day: 24, name: 'Batalla de Pichincha' },
+  { month: 8, day: 10, name: 'Primer Grito de Independencia' },
+  { month: 10, day: 9, name: 'Independencia de Guayaquil' },
+  { month: 11, day: 2, name: 'Día de los Difuntos' },
+  { month: 11, day: 3, name: 'Independencia de Cuenca' },
+  { month: 12, day: 25, name: 'Navidad' },
+]
 
 function formatLongDate(dateStr: string): string {
   if (!dateStr) return '—'
@@ -51,6 +65,60 @@ export function HolidaysSettings({ currentOrgId, holidays: initialHolidays }: Ho
   const [date, setDate] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Feriados fijos recomendados: se sugieren para el año en curso y el
+  // siguiente (útil hacia fin de año, cuando ya conviene precargar el
+  // próximo). Se marca como "ya registrado" si existe cualquier feriado con
+  // esa misma fecha (mes/día), sin importar el año.
+  const currentYear = new Date().getFullYear()
+  const [quickAddingKey, setQuickAddingKey] = useState<string | null>(null)
+
+  const registeredMonthDay = new Set(
+    holidays.map((h) => h.date.slice(5)) // "MM-DD"
+  )
+
+  const suggestedHolidays = [currentYear, currentYear + 1].flatMap((year) =>
+    FIXED_HOLIDAYS.map((h) => {
+      const monthDay = `${String(h.month).padStart(2, '0')}-${String(h.day).padStart(2, '0')}`
+      const isoDate = `${year}-${monthDay}`
+      return {
+        key: isoDate,
+        year,
+        isoDate,
+        name: h.name,
+        alreadyRegistered: registeredMonthDay.has(monthDay) && holidays.some((existing) => existing.date === isoDate),
+      }
+    })
+  )
+
+  async function handleQuickAdd(suggestion: { key: string; isoDate: string; name: string }) {
+    setQuickAddingKey(suggestion.key)
+    setError(null)
+
+    const { data, error } = await supabase
+      .from('holidays')
+      .insert({
+        organization_id: currentOrgId,
+        date: suggestion.isoDate,
+        name: suggestion.name,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      setError(
+        error.code === '23505'
+          ? 'Ya existe un feriado registrado para esta fecha.'
+          : error.message
+      )
+      setQuickAddingKey(null)
+      return
+    }
+
+    setHolidays((prev) => [...prev, data as Holiday].sort((a, b) => a.date.localeCompare(b.date)))
+    setQuickAddingKey(null)
+    router.refresh()
+  }
 
   async function handleAddHoliday(e: React.FormEvent) {
     e.preventDefault()
@@ -151,6 +219,57 @@ export function HolidaysSettings({ currentOrgId, holidays: initialHolidays }: Ho
                 Agregar Feriado
               </Button>
             </form>
+          </CardContent>
+        </Card>
+
+        {/* Feriados fijos recomendados — un clic para añadir cada uno */}
+        <Card className="rounded-xl">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber-500" />
+              Feriados Fijos Recomendados
+            </CardTitle>
+            <CardDescription>
+              Feriados nacionales de fecha fija en Ecuador para {currentYear} y {currentYear + 1}.
+              No incluye los de fecha móvil (Carnaval, Viernes Santo): agrégalos manualmente arriba.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {suggestedHolidays.map((s) => (
+              <div
+                key={s.key}
+                className="flex items-center justify-between gap-3 py-1.5 px-2 -mx-2 rounded-lg hover:bg-muted/40"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{s.name}</p>
+                  <p className="text-xs text-muted-foreground">{formatLongDate(s.isoDate)}</p>
+                </div>
+                {s.alreadyRegistered ? (
+                  <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium shrink-0 pr-1">
+                    <Check className="h-3.5 w-3.5" />
+                    Añadido
+                  </span>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleQuickAdd(s)}
+                    disabled={quickAddingKey === s.key}
+                    className="h-7 px-2.5 text-xs shrink-0"
+                  >
+                    {quickAddingKey === s.key ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Plus className="h-3.5 w-3.5 mr-1" />
+                        Añadir
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+            ))}
           </CardContent>
         </Card>
       </div>

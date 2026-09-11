@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Trash2, Loader2, Building2, Briefcase } from 'lucide-react'
+import { Plus, Trash2, Loader2, Building2, Briefcase, Pencil, Check, X } from 'lucide-react'
 
 interface SettingsManagerProps {
   currentOrgId: string
@@ -46,6 +46,17 @@ export function SettingsManager({
   const [posLoading, setPosLoading] = useState(false)
   const [posError, setPosError] = useState<string | null>(null)
 
+  // Edición inline de un departamento o cargo existente
+  const [editingDeptId, setEditingDeptId] = useState<string | null>(null)
+  const [editDeptName, setEditDeptName] = useState('')
+  const [editDeptDesc, setEditDeptDesc] = useState('')
+  const [editDeptLoading, setEditDeptLoading] = useState(false)
+
+  const [editingPosId, setEditingPosId] = useState<string | null>(null)
+  const [editPosName, setEditPosName] = useState('')
+  const [editPosDesc, setEditPosDesc] = useState('')
+  const [editPosLoading, setEditPosLoading] = useState(false)
+
   // Crear Departamento
   async function handleAddDepartment(e: React.FormEvent) {
     e.preventDefault()
@@ -73,6 +84,50 @@ export function SettingsManager({
     setDeptName('')
     setDeptDesc('')
     setDeptLoading(false)
+    router.refresh()
+  }
+
+  // Editar Departamento (nombre y/o descripción)
+  function startEditDepartment(dept: Department) {
+    setEditingDeptId(dept.id)
+    setEditDeptName(dept.name)
+    setEditDeptDesc(dept.description ?? '')
+  }
+
+  function cancelEditDepartment() {
+    setEditingDeptId(null)
+    setEditDeptName('')
+    setEditDeptDesc('')
+  }
+
+  async function handleSaveDepartment(id: string) {
+    if (!editDeptName.trim()) return
+    setEditDeptLoading(true)
+
+    const { data, error } = await supabase
+      .from('departments')
+      .update({
+        name: editDeptName.trim(),
+        description: editDeptDesc.trim() || null,
+      })
+      .eq('id', id)
+      .eq('organization_id', currentOrgId)
+      .select()
+      .single()
+
+    if (error) {
+      alert('Error al guardar: ' + error.message)
+      setEditDeptLoading(false)
+      return
+    }
+
+    setDepartments((prev) =>
+      prev
+        .map((d) => (d.id === id ? (data as Department) : d))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    )
+    setEditDeptLoading(false)
+    cancelEditDepartment()
     router.refresh()
   }
 
@@ -120,6 +175,50 @@ export function SettingsManager({
     setPosName('')
     setPosDesc('')
     setPosLoading(false)
+    router.refresh()
+  }
+
+  // Editar Cargo (nombre y/o descripción)
+  function startEditPosition(pos: Position) {
+    setEditingPosId(pos.id)
+    setEditPosName(pos.name)
+    setEditPosDesc(pos.description ?? '')
+  }
+
+  function cancelEditPosition() {
+    setEditingPosId(null)
+    setEditPosName('')
+    setEditPosDesc('')
+  }
+
+  async function handleSavePosition(id: string) {
+    if (!editPosName.trim()) return
+    setEditPosLoading(true)
+
+    const { data, error } = await supabase
+      .from('positions')
+      .update({
+        name: editPosName.trim(),
+        description: editPosDesc.trim() || null,
+      })
+      .eq('id', id)
+      .eq('organization_id', currentOrgId)
+      .select()
+      .single()
+
+    if (error) {
+      alert('Error al guardar: ' + error.message)
+      setEditPosLoading(false)
+      return
+    }
+
+    setPositions((prev) =>
+      prev
+        .map((p) => (p.id === id ? (data as Position) : p))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    )
+    setEditPosLoading(false)
+    cancelEditPosition()
     router.refresh()
   }
 
@@ -213,32 +312,100 @@ export function SettingsManager({
                   <TableRow>
                     <TableHead className="pl-6">Nombre</TableHead>
                     <TableHead>Descripción</TableHead>
-                    <TableHead className="w-[80px] text-right pr-6"></TableHead>
+                    <TableHead className="w-[112px] text-right pr-6"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {departments.map((dept) => (
-                    <TableRow key={dept.id}>
-                      <TableCell className="pl-6 font-medium text-foreground">
-                        {dept.name}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-xs">
-                        {dept.description ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-right pr-6">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteDepartment(dept.id)}
-                          className="text-muted-foreground hover:text-destructive h-8 w-8"
-                          title="Eliminar departamento"
-                          aria-label="Eliminar departamento"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {departments.map((dept) => {
+                    const isEditing = editingDeptId === dept.id
+                    return (
+                      <TableRow key={dept.id}>
+                        {isEditing ? (
+                          <>
+                            <TableCell className="pl-6">
+                              <Input
+                                value={editDeptName}
+                                onChange={(e) => setEditDeptName(e.target.value)}
+                                className="h-8 text-sm"
+                                autoFocus
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={editDeptDesc}
+                                onChange={(e) => setEditDeptDesc(e.target.value)}
+                                placeholder="Descripción (opcional)"
+                                className="h-8 text-xs"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right pr-6">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleSaveDepartment(dept.id)}
+                                  disabled={editDeptLoading || !editDeptName.trim()}
+                                  className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 h-8 w-8"
+                                  title="Guardar"
+                                  aria-label="Guardar"
+                                >
+                                  {editDeptLoading ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Check className="h-4 w-4" />
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={cancelEditDepartment}
+                                  disabled={editDeptLoading}
+                                  className="text-muted-foreground hover:text-foreground h-8 w-8"
+                                  title="Cancelar"
+                                  aria-label="Cancelar"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell className="pl-6 font-medium text-foreground">
+                              {dept.name}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-xs">
+                              {dept.description ?? '—'}
+                            </TableCell>
+                            <TableCell className="text-right pr-6">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => startEditDepartment(dept)}
+                                  className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 w-8"
+                                  title="Editar departamento"
+                                  aria-label="Editar departamento"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteDepartment(dept.id)}
+                                  className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-8 w-8"
+                                  title="Eliminar departamento"
+                                  aria-label="Eliminar departamento"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </>
+                        )}
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -317,32 +484,100 @@ export function SettingsManager({
                   <TableRow>
                     <TableHead className="pl-6">Puesto</TableHead>
                     <TableHead>Descripción</TableHead>
-                    <TableHead className="w-[80px] text-right pr-6"></TableHead>
+                    <TableHead className="w-[112px] text-right pr-6"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {positions.map((pos) => (
-                    <TableRow key={pos.id}>
-                      <TableCell className="pl-6 font-medium text-foreground">
-                        {pos.name}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-xs">
-                        {pos.description ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-right pr-6">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeletePosition(pos.id)}
-                          className="text-muted-foreground hover:text-destructive h-8 w-8"
-                          title="Eliminar cargo"
-                          aria-label="Eliminar cargo"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {positions.map((pos) => {
+                    const isEditing = editingPosId === pos.id
+                    return (
+                      <TableRow key={pos.id}>
+                        {isEditing ? (
+                          <>
+                            <TableCell className="pl-6">
+                              <Input
+                                value={editPosName}
+                                onChange={(e) => setEditPosName(e.target.value)}
+                                className="h-8 text-sm"
+                                autoFocus
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={editPosDesc}
+                                onChange={(e) => setEditPosDesc(e.target.value)}
+                                placeholder="Descripción (opcional)"
+                                className="h-8 text-xs"
+                              />
+                            </TableCell>
+                            <TableCell className="text-right pr-6">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleSavePosition(pos.id)}
+                                  disabled={editPosLoading || !editPosName.trim()}
+                                  className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 h-8 w-8"
+                                  title="Guardar"
+                                  aria-label="Guardar"
+                                >
+                                  {editPosLoading ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Check className="h-4 w-4" />
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={cancelEditPosition}
+                                  disabled={editPosLoading}
+                                  className="text-muted-foreground hover:text-foreground h-8 w-8"
+                                  title="Cancelar"
+                                  aria-label="Cancelar"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell className="pl-6 font-medium text-foreground">
+                              {pos.name}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-xs">
+                              {pos.description ?? '—'}
+                            </TableCell>
+                            <TableCell className="text-right pr-6">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => startEditPosition(pos)}
+                                  className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 w-8"
+                                  title="Editar cargo"
+                                  aria-label="Editar cargo"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeletePosition(pos.id)}
+                                  className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-8 w-8"
+                                  title="Eliminar cargo"
+                                  aria-label="Eliminar cargo"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </>
+                        )}
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             )}

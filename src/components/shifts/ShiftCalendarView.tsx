@@ -251,6 +251,9 @@ export function ShiftCalendarView({
 }: ShiftCalendarViewProps) {
   const [currentBaseDate, setCurrentBaseDate] = useState<Date>(new Date())
   const [viewRange, setViewRange] = useState<ViewRange>('15') // Por defecto 15 días
+  // Agrupar filas por departamento (con encabezado separador). Activado por
+  // defecto; el usuario puede desactivarlo desde la barra de herramientas.
+  const [groupByDepartment, setGroupByDepartment] = useState(true)
 
   // En pantallas angostas, 15 días o el mes completo fuerzan un scroll horizontal
   // casi inmediato; arrancar en "8 días" deja más celdas legibles sin scroll.
@@ -298,7 +301,9 @@ export function ShiftCalendarView({
     | { kind: 'employee'; employee: EmployeeWithSchedule }
 
   const groupedRows = useMemo<EmployeeRow[]>(() => {
-    if (currentDepartment) {
+    // Sin agrupar: ya sea porque el usuario lo desactivó, o porque el filtro
+    // de departamento ya dejó un solo grupo (el encabezado sería redundante).
+    if (currentDepartment || !groupByDepartment) {
       return employees.map((employee) => ({ kind: 'employee', employee }))
     }
 
@@ -325,7 +330,7 @@ export function ShiftCalendarView({
       rows.push({ kind: 'employee', employee })
     }
     return rows
-  }, [employees, currentDepartment])
+  }, [employees, currentDepartment, groupByDepartment])
 
   // Índice O(1) de solicitudes por empleado+fecha, construido una sola vez
   // por cambio de `requests` (no en cada celda de la tabla, ver `buildRequestIndex`)
@@ -509,6 +514,29 @@ export function ShiftCalendarView({
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
+
+            {/* Agrupar por departamento: solo tiene sentido si se ven varios a la vez */}
+            {!currentDepartment && (
+              <button
+                type="button"
+                onClick={() => setGroupByDepartment((prev) => !prev)}
+                aria-pressed={groupByDepartment}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs shadow-xs hover:bg-accent hover:text-accent-foreground transition-[color,background-color,transform] duration-150 ease-out motion-reduce:transition-none active:scale-95 cursor-pointer"
+                title="Mostrar u ocultar la separación por departamento"
+              >
+                <span
+                  className={cn(
+                    "flex h-3.5 w-3.5 items-center justify-center rounded-[4px] border shrink-0 transition-colors duration-150",
+                    groupByDepartment
+                      ? "bg-primary border-primary text-primary-foreground"
+                      : "border-input bg-background"
+                  )}
+                >
+                  {groupByDepartment && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                </span>
+                Dividir
+              </button>
+            )}
 
             {/* Leyenda de colores/badges del calendario */}
             <Popover>
