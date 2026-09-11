@@ -7,7 +7,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { PayrollTableView } from '@/components/payroll/PayrollTableView'
 import { SavePayrollReportButton } from '@/components/payroll/SavePayrollReportButton'
 import { PayrollEmployeeCalculation } from '@/components/payroll/PayrollDetailModal'
-import { calculateEcuadorDecimals } from '@/lib/payroll/ecuador'
+import { calculateEcuadorDecimals, getIessPersonalRate } from '@/lib/payroll/ecuador'
 import { Employee, EmployeeSalary, Deduction, ShiftRequest, Incident, EmployeeSchedule, DayOfWeek } from '@/types/employee'
 import { getIncidentCode, getShiftRequestCode, INCIDENT_PREFIX_MAP } from '@/lib/incidents/sequence'
 import Link from 'next/link'
@@ -284,9 +284,12 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
     // Total Ingresos (Base + Bonos + Horas Extras + Décimos/Fondos Mensualizados)
     const totalIncome = Number((baseSalary + bonuses + overtimeAmount + decimalsCalc.totalMensualizado).toFixed(2))
 
-    // d. Aporte IESS Personal (9.45% sobre base sueldo + horas extras + bonos)
+    // d. Aporte IESS Personal sobre base sueldo + horas extras + bonos.
+    // Gerente Propietario autoafiliado: 17.60% (todo a su cargo, sin aporte
+    // patronal aparte). Relación de dependencia normal: 9.45%.
     const iessTaxable = baseSalary + overtimeAmount + bonuses
-    const iessPersonal = emp.status === 'activo' ? Number((iessTaxable * 0.0945).toFixed(2)) : 0
+    const iessRate = getIessPersonalRate(emp.is_owner_manager === true)
+    const iessPersonal = emp.status === 'activo' ? Number((iessTaxable * iessRate).toFixed(2)) : 0
 
     // g (adelantado). Incidencias del empleado — se necesitan antes para
     // calcular días trabajados (incapacidad aprobada resta días del corte)
@@ -452,6 +455,8 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       totalIncome,
 
       iessPersonal,
+      iessRate,
+      isOwnerManager: emp.is_owner_manager === true,
       iessCode: emp.iess_code ?? null,
       cashShortages,
       inventoryDeductions,

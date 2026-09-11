@@ -71,6 +71,14 @@ export interface PayrollEmployeeCalculation {
 
   // Deducciones
   iessPersonal: number
+  /**
+   * Tasa efectivamente aplicada (0.0945 normal, 0.176 gerente propietario
+   * autoafiliado). Opcional: los snapshots guardados en payroll_reports antes
+   * de este campo no lo tienen — se asume 9.45% (comportamiento previo) si
+   * falta, ver el fallback al renderizar.
+   */
+  iessRate?: number
+  isOwnerManager?: boolean
   iessCode: string | null
   cashShortages: number
   inventoryDeductions: number
@@ -325,7 +333,11 @@ export function PayrollDetailModal({
                   <div className="space-y-2 text-xs">
                     {item.iessPersonal > 0 && (
                       <div className="flex justify-between items-center py-1 border-b border-border/40">
-                        <span className="text-muted-foreground">Aporte Personal IESS (9.45%)</span>
+                        <span className="text-muted-foreground">
+                          {item.isOwnerManager
+                            ? `Aporte IESS Autoafiliación (${((item.iessRate ?? 0.0945) * 100).toFixed(2)}%)`
+                            : `Aporte Personal IESS (${((item.iessRate ?? 0.0945) * 100).toFixed(2)}%)`}
+                        </span>
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.iessPersonal.toFixed(2)}</span>
                       </div>
                     )}

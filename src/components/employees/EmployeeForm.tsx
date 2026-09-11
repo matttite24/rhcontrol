@@ -295,6 +295,7 @@ export function EmployeeForm({
       spouse_extension:    data.get('spouse_extension') === 'on',
       iess_code:           (data.get('iess_code') as string)?.trim() || null,
       personal_charges:    parseInt(data.get('personal_charges') as string, 10) || 0,
+      is_owner_manager:    data.get('is_owner_manager') === 'on',
     }
 
     try {

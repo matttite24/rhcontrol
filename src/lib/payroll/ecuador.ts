@@ -12,6 +12,20 @@ export const IESS_PERSONAL_RATE = 0.0945
 // Porcentaje de Aporte Patronal al IESS (12.15%)
 export const IESS_EMPLOYER_RATE = 0.1215
 
+// Gerente Propietario de compañía: se afilia al IESS SIN relación de
+// dependencia (autoafiliación), aportando él mismo el equivalente personal +
+// patronal combinado. La empresa NO genera aporte patronal aparte para él.
+export const IESS_MANAGER_OWNER_RATE = 0.1760
+
+/**
+ * Tasa de aporte IESS (descuento del empleado) según su condición:
+ * Gerente Propietario autoafiliado (17.60%, todo a su cargo) vs. relación de
+ * dependencia normal (9.45%, con aporte patronal aparte del 12.15%).
+ */
+export function getIessPersonalRate(isOwnerManager: boolean): number {
+  return isOwnerManager ? IESS_MANAGER_OWNER_RATE : IESS_PERSONAL_RATE
+}
+
 // Porcentaje de Fondos de Reserva (8.33% de remuneración)
 export const RESERVE_FUNDS_RATE = 0.0833
 

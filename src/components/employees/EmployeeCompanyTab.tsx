@@ -362,6 +362,22 @@ export function EmployeeCompanyTab({
                 />
                 <span className="font-medium">Extensión Conyugal IESS</span>
               </label>
+
+              <label className={cn("flex items-start gap-2 text-xs text-foreground select-none pt-1", readOnly ? "cursor-default" : "cursor-pointer")}>
+                <input
+                  name="is_owner_manager"
+                  type="checkbox"
+                  disabled={readOnly}
+                  defaultChecked={employee?.is_owner_manager ?? false}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-ring mt-0.5"
+                />
+                <div className="flex flex-col">
+                  <span className="font-semibold">Gerente Propietario (Autoafiliación IESS)</span>
+                  <span className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                    Aporta el 17.60% combinado (personal + patronal) por su cuenta, en vez del 9.45% normal — la empresa no genera aporte patronal aparte para él/ella.
+                  </span>
+                </div>
+              </label>
             </div>
           </div>
 

@@ -91,6 +91,11 @@ export interface Employee {
   // Otras Configuraciones / IESS
   iess_code: string | null
   personal_charges: number
+  // Gerente Propietario de compañía: se autoafilia al IESS y aporta él mismo
+  // el equivalente personal + patronal combinado (17.60%), en vez del 9.45%
+  // de aporte personal normal. La empresa no genera aporte patronal (12.15%)
+  // aparte para él — ver src/lib/payroll/ecuador.ts (IESS_MANAGER_OWNER_RATE).
+  is_owner_manager: boolean
   
   created_at: string
   updated_at: string
