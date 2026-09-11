@@ -93,13 +93,12 @@ export function EmployeeGeneralTab({
 
         <div className="md:col-span-3 space-y-1.5">
           <Label htmlFor="email" className="text-xs font-medium">
-            Correo electrónico <span className="text-destructive font-bold">*</span>
+            Correo electrónico
           </Label>
-          <Input 
-            id="email" 
-            name="email" 
-            type="email" 
-            required 
+          <Input
+            id="email"
+            name="email"
+            type="email"
             readOnly={readOnly}
             disabled={readOnly}
             value={email}

@@ -230,11 +230,12 @@ export function EmployeeForm({
     const email_val = (data.get('email') as string)?.trim() || email.trim()
     const status_val = (data.get('status') as Employee['status']) || status || 'activo'
 
-    // Validar campos obligatorios requeridos
+    // Validar campos obligatorios requeridos. Correo y teléfono NO son
+    // obligatorios: en fase de recolección de datos, exigirlos llevaba a
+    // capturar valores inventados solo para poder guardar al empleado.
     const missing: string[] = []
     if (!full_name) missing.push('full_name')
     if (!national_id) missing.push('national_id')
-    if (!email_val) missing.push('email')
     if (!status_val) missing.push('status')
 
     if (missing.length > 0) {
@@ -247,7 +248,7 @@ export function EmployeeForm({
       )
 
       // Redirigir a la pestaña que tiene el error si no está activa
-      if (missing.some((f) => ['full_name', 'national_id', 'email'].includes(f))) {
+      if (missing.some((f) => ['full_name', 'national_id'].includes(f))) {
         setActiveTab('general')
       } else if (missing.includes('status')) {
         setActiveTab('company')
@@ -261,7 +262,7 @@ export function EmployeeForm({
       organization_id: currentOrgId,
       full_name,
       national_id,
-      email:            email_val,
+      email:            email_val || null,
       phone:            (data.get('phone') as string)?.trim() || null,
       phone_secondary:  (data.get('phone_secondary') as string)?.trim() || null,
       address:          (data.get('address') as string)?.trim() || null,

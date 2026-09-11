@@ -584,7 +584,7 @@ export function ShiftCalendarView({
             <thead>
               <tr className="border-b bg-muted/40 text-xs">
                 {/* Celda Empleado con Popover de Filtro por Departamento */}
-                <th className="p-3 pl-6 font-semibold min-w-[220px] max-w-[240px] sticky left-0 bg-muted z-10 border-r border-border/40">
+                <th className="p-3 pl-6 font-semibold min-w-[260px] max-w-[300px] sticky left-0 bg-muted z-10 border-r border-border/40">
                   <Popover>
                     <PopoverTrigger
                       render={
@@ -656,8 +656,8 @@ export function ShiftCalendarView({
                       onClick={isHoliday ? () => toast.info('Día Feriado', holidayName) : undefined}
                       className={cn(
                         "p-2 text-center font-medium border-l border-border/50 min-w-[110px]",
-                        isToday && "bg-primary/10 text-primary font-bold",
-                        isWeekend && !isToday && !isHoliday && "bg-indigo-500/[0.06]",
+                        isToday && "bg-primary/15 text-primary font-bold ring-1 ring-inset ring-primary/30",
+                        isWeekend && !isToday && !isHoliday && "bg-slate-500/[0.07] dark:bg-slate-400/[0.08]",
                         isHoliday && !isToday && "bg-rose-500/10 cursor-pointer"
                       )}
                       title={holidayName ? `Feriado: ${holidayName}` : undefined}
@@ -732,10 +732,10 @@ export function ShiftCalendarView({
                             </Avatar>
                           </Link>
                           <div className="flex flex-col min-w-0">
-                            <span className="font-semibold text-foreground truncate max-w-[150px]" title={emp.full_name}>
+                            <span className="font-semibold text-foreground truncate max-w-[210px]" title={emp.full_name}>
                               {emp.full_name}
                             </span>
-                            <span className="text-[11px] text-muted-foreground truncate max-w-[150px]" title={emp.position || undefined}>
+                            <span className="text-[11px] text-muted-foreground truncate max-w-[210px]" title={emp.position || undefined}>
                               {emp.position || '—'}
                             </span>
                           </div>
@@ -820,7 +820,13 @@ export function ShiftCalendarView({
                               key={dayDate.toISOString()}
                               className={cn(
                                 "p-1.5 text-center border-l border-border/50 select-none min-w-[110px]",
-                                isToday ? "bg-primary/5" : (isHolidayDate ? "bg-rose-500/5" : (isWeekend ? "bg-muted/30" : "bg-muted/10"))
+                                isToday
+                                  ? "bg-primary/10"
+                                  : isHolidayDate
+                                    ? "bg-rose-500/5"
+                                    : isWeekend
+                                      ? "bg-slate-500/[0.08] dark:bg-slate-400/10"
+                                      : "bg-muted/10"
                               )}
                             >
                               <div className="flex flex-col items-center justify-center gap-1">
@@ -915,9 +921,9 @@ export function ShiftCalendarView({
                             key={dayDate.toISOString()}
                             className={cn(
                               "p-1.5 border-l border-border/50 text-center min-w-[110px]",
-                              isToday && "bg-primary/5",
+                              isToday && "bg-primary/10",
                               isHolidayDate && !isToday && "bg-rose-500/5",
-                              isWeekend && !isToday && !isHolidayDate && "bg-indigo-500/[0.04]",
+                              isWeekend && !isToday && !isHolidayDate && "bg-slate-500/[0.06] dark:bg-slate-400/[0.07]",
                               scheduleChangeReq && isScheduleChangeApproved && "bg-blue-500/5"
                             )}
                           >
@@ -925,16 +931,22 @@ export function ShiftCalendarView({
                               {/* Horario en texto plano sobre el grid (sin card): lectura rápida, deja protagonismo a los indicadores */}
                               <div className={cn(
                                 "flex flex-col items-center justify-center w-full",
-                                scheduleChangeReq && isScheduleChangeApproved && "text-blue-700 dark:text-blue-300"
+                                scheduleChangeReq && isScheduleChangeApproved
+                                  ? "text-blue-700 dark:text-blue-300"
+                                  : isToday && "text-primary"
                               )}>
                                 <div className={cn(
-                                  "text-[11px] font-medium font-mono whitespace-nowrap",
-                                  !(scheduleChangeReq && isScheduleChangeApproved) && "text-foreground"
+                                  "text-[11px] font-mono whitespace-nowrap",
+                                  isToday ? "font-bold" : "font-medium",
+                                  !(scheduleChangeReq && isScheduleChangeApproved) && !isToday && "text-foreground"
                                 )}>
                                   {effectiveStart1} - {effectiveEnd1}
                                 </div>
                                 {effectiveSplit && (
-                                  <div className="text-[10.5px] text-muted-foreground font-mono whitespace-nowrap mt-0.5">
+                                  <div className={cn(
+                                    "text-[10.5px] font-mono whitespace-nowrap mt-0.5",
+                                    isToday ? "text-primary/80 font-semibold" : "text-muted-foreground"
+                                  )}>
                                     {effectiveStart2} - {effectiveEnd2}
                                   </div>
                                 )}

@@ -29,38 +29,11 @@ export default async function ShiftCalendarPage({ searchParams }: ShiftCalendarP
     )
   }
 
-  // Obtener departamentos disponibles (deduplicados y sin vacíos por seguridad)
-  const { data: deptData, error: deptError } = await supabase
-    .from('departments')
-    .select('name')
-    .eq('organization_id', currentOrg.id)
-    .order('name')
-
-  const departments = Array.from(
-    new Set((deptData || []).map((d) => d.name).filter(Boolean))
-  )
-
-  // Consulta de empleados con sus horarios de trabajo
-  let empQuery = supabase
-    .from('employees')
-    .select(`
-      *,
-      schedules:employee_schedules (*)
-    `)
-    .eq('organization_id', currentOrg.id)
-    .order('full_name')
-
-  if (params.department) {
-    empQuery = empQuery.eq('department', params.department)
-  }
-
-  const { data: employeesData, error: employeesError } = await empQuery
-
-  // Consulta de solicitudes de horas extras y turnos para mostrar en el calendario.
-  // Se acota a una ventana razonable (6 meses atrás / 1 año adelante) en vez de
-  // traer el histórico completo de la organización en cada navegación: el
-  // calendario solo necesita fechas dentro de ese margen alrededor de "hoy",
-  // y una solicitud de vacaciones/cambio de horario largo cabe holgadamente ahí.
+  // Ventana de fechas para solicitudes/feriados: 6 meses atrás / 1 año adelante
+  // desde "hoy", en vez de traer el histórico completo de la organización en
+  // cada navegación — el calendario solo puede mostrar fechas dentro de ese
+  // margen, y una solicitud de vacaciones/cambio de horario largo cabe
+  // holgadamente ahí.
   const today = new Date()
   const requestsRangeStart = new Date(today.getFullYear(), today.getMonth() - 6, 1)
   const requestsRangeEnd = new Date(today.getFullYear() + 1, today.getMonth(), 0)
@@ -79,47 +52,79 @@ export default async function ShiftCalendarPage({ searchParams }: ShiftCalendarP
     )
   `
 
-  // Solicitudes con fecha exacta (horas extras, permisos, cambios de horario):
-  // acotadas a la ventana visible/navegable por su columna `date`.
-  const datedRequestsPromise = supabase
-    .from('shift_requests')
-    .select(requestsSelect)
+  // Consulta de empleados con sus horarios de trabajo
+  let empQuery = supabase
+    .from('employees')
+    .select(`
+      *,
+      schedules:employee_schedules (*)
+    `)
     .eq('organization_id', currentOrg.id)
-    .neq('request_type', 'solicitud_vacaciones')
-    .gte('date', toIsoDate(requestsRangeStart))
-    .lte('date', toIsoDate(requestsRangeEnd))
+    .order('full_name')
 
-  // Vacaciones: su columna `date` solo guarda el día de inicio, pero el rango
-  // (metadata.start_date..end_date) puede empezar antes de la ventana y
-  // extenderse dentro de ella. Se filtra por SOLAPAMIENTO de rango, no por el
-  // día de inicio, para que un período que ya empezó siga marcándose.
-  const vacationRequestsPromise = supabase
-    .from('shift_requests')
-    .select(requestsSelect)
-    .eq('organization_id', currentOrg.id)
-    .eq('request_type', 'solicitud_vacaciones')
-    .lte('metadata->>start_date', toIsoDate(requestsRangeEnd))
-    .gte('metadata->>end_date', toIsoDate(requestsRangeStart))
+  if (params.department) {
+    empQuery = empQuery.eq('department', params.department)
+  }
 
-  const [{ data: datedData, error: requestsError }, { data: vacationData, error: vacationError }] =
-    await Promise.all([datedRequestsPromise, vacationRequestsPromise])
+  // Las 5 consultas de esta página no dependen entre sí, así que se lanzan
+  // TODAS juntas en vez de en serie (departments → employees → requests →
+  // holidays, como antes). Con Supabase/Postgres corriendo lejos del server,
+  // cada round-trip de red suma cientos de ms; encadenarlas en serie es lo
+  // que hacía sentir "colgado" el calendario aun con pocos empleados.
+  const [
+    { data: deptData, error: deptError },
+    { data: employeesData, error: employeesError },
+    { data: datedData, error: requestsError },
+    { data: vacationData, error: vacationError },
+    { data: holidaysData, error: holidaysError },
+  ] = await Promise.all([
+    // Departamentos disponibles (deduplicados y sin vacíos por seguridad)
+    supabase
+      .from('departments')
+      .select('name')
+      .eq('organization_id', currentOrg.id)
+      .order('name'),
+    empQuery,
+    // Solicitudes con fecha exacta (horas extras, permisos, cambios de horario):
+    // acotadas a la ventana visible/navegable por su columna `date`.
+    supabase
+      .from('shift_requests')
+      .select(requestsSelect)
+      .eq('organization_id', currentOrg.id)
+      .neq('request_type', 'solicitud_vacaciones')
+      .gte('date', toIsoDate(requestsRangeStart))
+      .lte('date', toIsoDate(requestsRangeEnd)),
+    // Vacaciones: su columna `date` solo guarda el día de inicio, pero el rango
+    // (metadata.start_date..end_date) puede empezar antes de la ventana y
+    // extenderse dentro de ella. Se filtra por SOLAPAMIENTO de rango, no por el
+    // día de inicio, para que un período que ya empezó siga marcándose.
+    supabase
+      .from('shift_requests')
+      .select(requestsSelect)
+      .eq('organization_id', currentOrg.id)
+      .eq('request_type', 'solicitud_vacaciones')
+      .lte('metadata->>start_date', toIsoDate(requestsRangeEnd))
+      .gte('metadata->>end_date', toIsoDate(requestsRangeStart)),
+    // Feriados registrados, acotados a la misma ventana: el calendario solo
+    // puede mostrar feriados dentro de las fechas visibles/navegables, no
+    // todo el histórico de feriados de la organización desde su creación.
+    supabase
+      .from('holidays')
+      .select('*')
+      .eq('organization_id', currentOrg.id)
+      .gte('date', toIsoDate(requestsRangeStart))
+      .lte('date', toIsoDate(requestsRangeEnd))
+      .order('date', { ascending: true }),
+  ])
+
+  const departments = Array.from(
+    new Set((deptData || []).map((d) => d.name).filter(Boolean))
+  )
 
   const shiftRequests = [
     ...((datedData as ShiftRequest[]) || []),
     ...((vacationData as ShiftRequest[]) || []),
   ]
-
-  // Consulta de feriados registrados para marcarlos en el calendario.
-  // Acotada a la misma ventana que shift_requests: el calendario solo puede
-  // mostrar feriados dentro de las fechas visibles/navegables, no todo el
-  // histórico de feriados de la organización desde su creación.
-  const { data: holidaysData, error: holidaysError } = await supabase
-    .from('holidays')
-    .select('*')
-    .eq('organization_id', currentOrg.id)
-    .gte('date', toIsoDate(requestsRangeStart))
-    .lte('date', toIsoDate(requestsRangeEnd))
-    .order('date', { ascending: true })
 
   const holidays = (holidaysData as Holiday[]) || []
 

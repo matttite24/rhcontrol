@@ -55,7 +55,7 @@ export interface Employee {
   id: string
   organization_id: string
   full_name: string
-  email: string
+  email: string | null
   national_id?: string | null   // Cédula de ciudadanía / Documento de identidad
   phone: string | null
   phone_secondary: string | null
