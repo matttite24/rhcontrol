@@ -80,6 +80,16 @@ function calculateVacationPeriod(hireDateStr: string) {
 
   const iso = (d: Date) => d.toISOString().split('T')[0]
 
+  // El label mostrado al usuario debe describir el período que realmente se
+  // está LIQUIDANDO — el saldo normal (ver getEmployeeVacationBalanceAction)
+  // es el arrastre del período anterior, no el vigente, así que el label
+  // apunta ahí cuando existe. Solo cae al vigente si no hay período anterior
+  // (empleado con exactamente 1 año de antigüedad: su primer año cumplido ES
+  // el vigente).
+  const settlementLabel = previousPeriodExists
+    ? `Período ${iso(previousPeriodStart)} a ${iso(previousPeriodEnd)}`
+    : `Período ${iso(periodStart)} a ${iso(periodEnd)}`
+
   return {
     yearsOfService,
     annualLawDays,
@@ -88,7 +98,7 @@ function calculateVacationPeriod(hireDateStr: string) {
     hasCompletedFirstYear: yearsOfService >= 1,
     periodStartDate: iso(periodStart),
     periodEndDate: iso(periodEnd),
-    periodLabel: `Período ${iso(periodStart)} a ${iso(periodEnd)}`,
+    periodLabel: settlementLabel,
     previousPeriodExists,
     previousPeriodStartDate: iso(previousPeriodStart),
     previousPeriodEndDate: iso(previousPeriodEnd),
@@ -607,7 +617,10 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
   yearsOfService: number
   monthsInPeriod: number
   hasCompletedFirstYear: boolean
+  /** Período que se está LIQUIDANDO (el anterior no consumido, o el vigente si es el primer año del empleado). */
   period: string
+  /** Período VIGENTE (año en curso, aún no cumplido) — para el texto del adelanto, distinto de `period`. */
+  currentPeriodLabel: string
   error?: string
 }> {
   try {
@@ -632,6 +645,7 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
         monthsInPeriod: 0,
         hasCompletedFirstYear: false,
         period: '—',
+        currentPeriodLabel: '—',
         error: 'No se encontró la fecha de ingreso del empleado',
       }
     }
@@ -650,6 +664,10 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
       previousPeriodEndDate,
       previousPeriodAnnualDays,
     } = calculateVacationPeriod(emp.hire_date)
+
+    // Label del período VIGENTE (año en curso), distinto de `period` (que
+    // apunta al anterior cuando existe) — usado para el texto del adelanto.
+    const currentPeriodLabel = `Período ${periodStartDate} a ${periodEndDate}`
 
     /** Suma días usados (vacaciones + permisos con cargo a vacaciones) entre un rango de solicitudes ya cargadas. */
     function sumUsedDays(rows: { request_type: string; hours: number | null; metadata: any; status: string }[]): number {
@@ -731,6 +749,7 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
       monthsInPeriod,
       hasCompletedFirstYear,
       period,
+      currentPeriodLabel,
     }
   } catch (err: any) {
     return {
@@ -745,6 +764,7 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
       monthsInPeriod: 0,
       hasCompletedFirstYear: false,
       period: '—',
+      currentPeriodLabel: '—',
       error: err.message,
     }
   }

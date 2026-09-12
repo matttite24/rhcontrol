@@ -103,7 +103,10 @@ export function VacationWizardModal({
     usedDays: number
     carriedOverDays: number
     availableDays: number
+    /** Período que se está liquidando (el anterior no consumido, o el vigente si es el primer año). */
     period: string
+    /** Período vigente (año en curso) — para el texto del adelanto, distinto de `period`. */
+    currentPeriodLabel: string
   } | null>(null)
 
   // Adelanto de días del período vigente aún no acumulados proporcionalmente
@@ -130,6 +133,7 @@ export function VacationWizardModal({
             carriedOverDays: res.carriedOverDays,
             availableDays: res.availableDays,
             period: res.period,
+            currentPeriodLabel: res.currentPeriodLabel,
           })
         }
       } catch (err) {
@@ -173,7 +177,11 @@ export function VacationWizardModal({
   // prorratear) — límite duro del adelanto: nunca se autoriza más de esto.
   const annualLawDays = realBalance?.annualLawDays ?? totalLawDays
   const usedDays = realBalance ? realBalance.usedDays : 0
-  const currentPeriod = realBalance?.period || seniority.period
+  // Período que se está LIQUIDANDO (el anterior no consumido, salvo primer
+  // año) — distinto del período VIGENTE (año en curso), que solo se usa en
+  // el texto del adelanto.
+  const settlementPeriod = realBalance?.period || seniority.period
+  const currentPeriodLabel = realBalance?.currentPeriodLabel || seniority.period
 
   // El adelanto solo tiene sentido si ya no queda saldo tomable normal.
   const canOfferAdvance = normalAvailableDays === 0 && annualLawDays > 0
@@ -183,6 +191,11 @@ export function VacationWizardModal({
   const availableDays = useAdvance && canOfferAdvance
     ? Math.max(0, annualLawDays - usedDays)
     : normalAvailableDays
+
+  // Período efectivo de la solicitud que se está emitiendo: el vigente si se
+  // usa el adelanto, el que se liquida (anterior no consumido) en cualquier
+  // otro caso — para el título, metadata y documento impreso.
+  const effectivePeriod = useAdvance && canOfferAdvance ? currentPeriodLabel : settlementPeriod
 
   // Cálculo de días solicitados
   const requestedDays = useMemo(() => {
@@ -295,7 +308,7 @@ export function VacationWizardModal({
       const res = await createVacationRequestAction({
         organizationId,
         employeeId: selectedEmp.id,
-        title: `Solicitud de Vacaciones - ${requestedDays} días (${seniority.period})`,
+        title: `Solicitud de Vacaciones - ${requestedDays} días (${effectivePeriod})`,
         reason: reason.trim() || 'Descanso anual de ley',
         startDate,
         endDate,
@@ -312,7 +325,7 @@ export function VacationWizardModal({
           days_count: requestedDays,
           available_days: availableDays,
           remaining_days: remainingDays,
-          settlement_period: seniority.period,
+          settlement_period: effectivePeriod,
           reason: reason.trim(),
           // Marca si se usó el adelanto de días no acumulados aún (ver
           // checkbox "Adelantar días") — deja trazabilidad de que estos días
@@ -349,7 +362,7 @@ export function VacationWizardModal({
       startDate,
       endDate,
       daysCount: requestedDays,
-      settlementPeriod: seniority.period,
+      settlementPeriod: effectivePeriod,
       availableDays,
       remainingDays,
       reason: reason.trim(),
@@ -500,7 +513,7 @@ export function VacationWizardModal({
                     <span className="text-[10.5px] font-medium text-muted-foreground uppercase">Período a Liquidar</span>
                     <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
                       <Calendar className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span>{currentPeriod}</span>
+                      <span>{settlementPeriod}</span>
                       {balanceLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
                     </div>
                   </div>
@@ -545,7 +558,7 @@ export function VacationWizardModal({
                     />
                     <div className="text-xs">
                       <span className="font-medium text-foreground">
-                        Adelantar días del período vigente ({currentPeriod})
+                        Adelantar días del período vigente ({currentPeriodLabel})
                       </span>
                       <p className="text-[11px] text-muted-foreground mt-0.5">
                         El empleado ya no tiene saldo tomable, pero puedes autorizar hasta{' '}
@@ -675,7 +688,7 @@ export function VacationWizardModal({
                       </div>
                       <div className="flex items-center justify-between border-b pb-2">
                         <span className="text-muted-foreground font-medium">Período a Liquidar:</span>
-                        <span className="font-bold text-foreground">{seniority.period}</span>
+                        <span className="font-bold text-foreground">{effectivePeriod}</span>
                       </div>
                       <div className="flex items-center justify-between border-b pb-2">
                         <span className="text-muted-foreground font-medium">Rango de Vacaciones:</span>
