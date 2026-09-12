@@ -435,12 +435,12 @@ export async function createVacationRequestAction(params: CreateVacationRequestP
         return { success: false, error: 'El empleado no cumple con el requisito legal de 1 año de antigüedad.' }
       }
 
-      // Tope real: el proporcional/arrastre normal del período vigente
+      // Tope real: el saldo del ÚLTIMO AÑO YA CUMPLIDO no consumido
       // (getEmployeeVacationBalanceAction, misma fuente de verdad que usa el
-      // wizard para mostrar el saldo), MÁS el resto del año completo cuando
-      // la solicitud viene marcada como adelanto explícito (ver
-      // VacationWizardModal "Adelantar días") — pero nunca por encima del
-      // máximo anual completo por ley (annualLawDays - usedDays).
+      // wizard para mostrar el saldo) — el período vigente (año en curso) NO
+      // cuenta aquí, solo se habilita como adelanto explícito (ver
+      // VacationWizardModal "Adelantar días"), y en ese caso el tope pasa a
+      // ser el máximo anual completo por ley (annualLawDays - usedDays).
       const balance = await getEmployeeVacationBalanceAction(params.employeeId)
       if (!balance.success) {
         return { success: false, error: balance.error || 'No se pudo verificar el saldo de vacaciones.' }
@@ -456,7 +456,7 @@ export async function createVacationRequestAction(params: CreateVacationRequestP
           success: false,
           error: isAdvance
             ? `Límite excedido: el adelanto permite hasta ${availableLimit} día(s) del año completo (Total ley: ${balance.annualLawDays}, ya tomados: ${balance.usedDays}).`
-            : `Límite excedido: Solo dispone de ${availableLimit} día(s) de vacaciones (arrastre: ${balance.carriedOverDays}, acumulado vigente: ${balance.totalLawDays}, tomados/en trámite: ${balance.usedDays}).`,
+            : `Límite excedido: Solo dispone de ${availableLimit} día(s) de vacaciones del último período cumplido (tomados/en trámite: ${balance.usedDays}).`,
         }
       }
     }
@@ -591,13 +591,18 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
   success: boolean
   /** Días anuales que le corresponden por ley según su antigüedad (15..30). */
   annualLawDays: number
-  /** Días proporcionales acumulados a la fecha dentro del período vigente. */
+  /**
+   * Proporcional del período VIGENTE (año en curso, aún no cumplido) — ya NO
+   * forma parte del saldo normal (`availableDays`). Solo se usa como techo
+   * del adelanto explícito (ver checkbox "Adelantar días").
+   */
   accruedDays: number
   /** @deprecated Usa `accruedDays`. Se mantiene por compatibilidad de UI. */
   totalLawDays: number
   usedDays: number
-  /** Saldo no consumido del período inmediato anterior, arrastrado al vigente (máx. 2 períodos, ver calculateVacationPeriod). */
+  /** Días del ÚLTIMO período (año) YA CUMPLIDO y no consumidos — esto es lo que compone `availableDays` por defecto (no se acumulan varios años). */
   carriedOverDays: number
+  /** Saldo disponible SIN adelanto: igual a `carriedOverDays - usedDays`, nunca incluye el período vigente. */
   availableDays: number
   yearsOfService: number
   monthsInPeriod: number
@@ -704,10 +709,15 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
       carriedOverDays = Math.max(0, previousPeriodAnnualDays - usedInPreviousPeriod)
     }
 
-    // El saldo disponible = proporcional acumulado en el período vigente +
-    // arrastre no consumido del período anterior, menos lo ya usado en el
-    // vigente (lo usado en el anterior ya se restó al calcular el arrastre).
-    const availableDays = Math.max(0, accruedToDate + carriedOverDays - usedDays)
+    // El saldo NORMAL disponible es SOLO el bloque del último año YA CUMPLIDO
+    // (carriedOverDays) — nunca se acumulan 15 días por cada año de
+    // antigüedad, solo se puede arrastrar el período inmediato anterior no
+    // consumido. El período VIGENTE (el año que está corriendo ahora mismo,
+    // aún no cumplido) NO forma parte de este saldo: solo se ofrece como
+    // adelanto explícito (ver checkbox en VacationWizardModal) cuando este
+    // saldo ya llega a 0. `usedDays` aquí son días tomados dentro del período
+    // vigente (ej. un adelanto ya registrado), que si los hay también restan.
+    const availableDays = Math.max(0, carriedOverDays - usedDays)
 
     return {
       success: true,
@@ -737,6 +747,50 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
       period: '—',
       error: err.message,
     }
+  }
+}
+
+/**
+ * Elimina permanentemente una solicitud de turno (horas extras, vacaciones,
+ * permiso, cambio de horario) ya RECHAZADA — no se permite borrar pendientes
+ * ni aprobadas, esas requieren pasar primero por rechazo/anulación para
+ * mantener el rastro de auditoría de lo que sí se autorizó.
+ */
+export async function deleteRejectedShiftRequestAction(
+  requestId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return { success: false, error: 'No autenticado. Inicia sesión nuevamente.' }
+    }
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('shift_requests')
+      .select('id, status')
+      .eq('id', requestId)
+      .single()
+
+    if (fetchError || !existing) {
+      return { success: false, error: 'La solicitud no existe o ya fue eliminada.' }
+    }
+    if (existing.status !== 'rechazado') {
+      return { success: false, error: 'Solo se pueden eliminar solicitudes rechazadas.' }
+    }
+
+    const { error } = await supabase.from('shift_requests').delete().eq('id', requestId)
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/shifts/requests')
+    revalidatePath('/shifts/calendar')
+    return { success: true }
+  } catch (err: any) {
+    console.error('Catch en deleteRejectedShiftRequestAction:', err)
+    return { success: false, error: err?.message || 'Error inesperado al eliminar la solicitud' }
   }
 }
 

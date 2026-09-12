@@ -32,7 +32,9 @@ import {
   Timer,
   RefreshCw,
   Palmtree,
+  Trash2,
 } from 'lucide-react'
+import { deleteRejectedShiftRequestAction } from '@/lib/shifts/actions'
 import { printOvertimeDocument } from '@/lib/shifts/print-overtime'
 import { printLeavePermissionDocument } from '@/lib/shifts/print-leave-permission'
 import { printScheduleChangeDocument } from '@/lib/shifts/print-schedule-change'
@@ -61,6 +63,8 @@ export function ShiftRequestDetailModal({
   organization: organizationProp,
 }: ShiftRequestDetailModalProps) {
   const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false)
   const [fetchedOrganization, setFetchedOrganization] = useState<Organization | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -195,6 +199,27 @@ export function ShiftRequestDetailModal({
       toast.error(err.message || 'Error al actualizar el estado.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!request) return
+    setDeleting(true)
+    try {
+      const result = await deleteRejectedShiftRequestAction(request.id)
+      if (!result.success) {
+        toast.error('No se pudo eliminar', result.error || 'Ocurrió un error inesperado.')
+        return
+      }
+      toast.success('Solicitud eliminada')
+      setShowConfirmDelete(false)
+      onOpenChange(false)
+      router.refresh()
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || 'Error al eliminar la solicitud.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -560,6 +585,19 @@ export function ShiftRequestDetailModal({
               </>
             )}
 
+            {isRejected && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowConfirmDelete(true)}
+                className="border-rose-200 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 hover:text-rose-800 dark:hover:text-rose-300 hover:border-rose-300 dark:hover:border-rose-800 transition-colors cursor-pointer gap-1.5 font-medium shadow-2xs"
+              >
+                <Trash2 className="h-4 w-4" />
+                Eliminar
+              </Button>
+            )}
+
             {!isPending && (
               <Button
                 type="button"
@@ -574,6 +612,51 @@ export function ShiftRequestDetailModal({
           </div>
         </div>
       </DialogContent>
+
+      {/* Confirmación de eliminación permanente — solo aplica a rechazadas. */}
+      <Dialog open={showConfirmDelete} onOpenChange={setShowConfirmDelete}>
+        <DialogContent className="sm:max-w-md p-6">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-foreground">
+                  ¿Eliminar esta solicitud rechazada?
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-1">
+                  Esta acción es permanente y no se puede deshacer. La solicitud desaparecerá del listado y del
+                  calendario.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <DialogFooter className="gap-2 mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowConfirmDelete(false)}
+              disabled={deleting}
+              className="cursor-pointer"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="cursor-pointer gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold"
+            >
+              {deleting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Eliminar permanentemente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }
