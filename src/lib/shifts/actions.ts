@@ -435,50 +435,28 @@ export async function createVacationRequestAction(params: CreateVacationRequestP
         return { success: false, error: 'El empleado no cumple con el requisito legal de 1 año de antigüedad.' }
       }
 
-      // Las vacaciones completas requieren el año cumplido (validado arriba),
-      // así que el tope es el total anual según antigüedad.
-      const { annualLawDays: maxLawDays, periodStartDate, periodEndDate } =
-        calculateVacationPeriod(empData.hire_date)
+      // Tope real: el proporcional/arrastre normal del período vigente
+      // (getEmployeeVacationBalanceAction, misma fuente de verdad que usa el
+      // wizard para mostrar el saldo), MÁS el resto del año completo cuando
+      // la solicitud viene marcada como adelanto explícito (ver
+      // VacationWizardModal "Adelantar días") — pero nunca por encima del
+      // máximo anual completo por ley (annualLawDays - usedDays).
+      const balance = await getEmployeeVacationBalanceAction(params.employeeId)
+      if (!balance.success) {
+        return { success: false, error: balance.error || 'No se pudo verificar el saldo de vacaciones.' }
+      }
 
-      // Consultar días ya tomados o pendientes DENTRO DEL PERÍODO VIGENTE
-      // (vacaciones y permisos con cargo a vacaciones) — sin este filtro de
-      // fecha, solicitudes de períodos anteriores ya disfrutados seguirían
-      // restando indefinidamente del saldo disponible actual.
-      const { data: takenRequests } = await supabase
-        .from('shift_requests')
-        .select('request_type, hours, metadata, status')
-        .eq('employee_id', params.employeeId)
-        .in('request_type', ['solicitud_vacaciones', 'permiso_laboral', 'otro'])
-        .in('status', ['pendiente', 'aprobado'])
-        .gte('date', periodStartDate)
-        .lte('date', periodEndDate)
+      const isAdvance = Boolean(params.metadata?.is_advance)
+      const availableLimit = isAdvance
+        ? Math.max(0, balance.annualLawDays - balance.usedDays)
+        : balance.availableDays
 
-      const usedDays = (takenRequests || []).reduce((acc, curr) => {
-        const isVacation =
-          curr.request_type === 'solicitud_vacaciones' ||
-          curr.metadata?.sub_type === 'solicitud_vacaciones'
-        const isCargoVacaciones =
-          (curr.request_type === 'permiso_laboral' || curr.metadata?.sub_type === 'permiso_laboral') &&
-          curr.metadata?.recovery_method === 'cargo_vacaciones'
-
-        if (isVacation) {
-          return acc + Number(curr.metadata?.days_count || (curr.hours ? curr.hours / 8 : 0))
-        }
-        if (isCargoVacaciones) {
-          const days =
-            curr.metadata?.leave_unit === 'horas'
-              ? (curr.hours || curr.metadata?.requested_hours || 0) / 8
-              : Number(curr.metadata?.requested_days || (curr.hours ? curr.hours / 8 : 1))
-          return acc + days
-        }
-        return acc
-      }, 0)
-
-      const availableLimit = Math.max(0, maxLawDays - usedDays)
       if (params.daysCount > availableLimit) {
         return {
           success: false,
-          error: `Límite excedido: Solo dispone de ${availableLimit} día(s) de vacaciones (Total ley: ${maxLawDays}, tomados/en trámite o permisos cargados: ${usedDays}).`,
+          error: isAdvance
+            ? `Límite excedido: el adelanto permite hasta ${availableLimit} día(s) del año completo (Total ley: ${balance.annualLawDays}, ya tomados: ${balance.usedDays}).`
+            : `Límite excedido: Solo dispone de ${availableLimit} día(s) de vacaciones (arrastre: ${balance.carriedOverDays}, acumulado vigente: ${balance.totalLawDays}, tomados/en trámite: ${balance.usedDays}).`,
         }
       }
     }

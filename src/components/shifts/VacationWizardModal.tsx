@@ -99,11 +99,17 @@ export function VacationWizardModal({
   const [balanceLoading, setBalanceLoading] = useState(false)
   const [realBalance, setRealBalance] = useState<{
     totalLawDays: number
+    annualLawDays: number
     usedDays: number
     carriedOverDays: number
     availableDays: number
     period: string
   } | null>(null)
+
+  // Adelanto de días del período vigente aún no acumulados proporcionalmente
+  // (ver checkbox "Adelantar días"): solo se ofrece cuando el saldo tomable
+  // (arrastre + proporcional a la fecha) ya está en 0.
+  const [useAdvance, setUseAdvance] = useState(false)
 
   // Cargar balance real de vacaciones desde la base de datos al seleccionar empleado
   React.useEffect(() => {
@@ -119,6 +125,7 @@ export function VacationWizardModal({
         if (isCurrent && res.success) {
           setRealBalance({
             totalLawDays: res.totalLawDays,
+            annualLawDays: res.annualLawDays,
             usedDays: res.usedDays,
             carriedOverDays: res.carriedOverDays,
             availableDays: res.availableDays,
@@ -153,8 +160,9 @@ export function VacationWizardModal({
     return getEmployeeSeniority(selectedEmp?.hire_date)
   }, [selectedEmp])
 
-  // Días de vacaciones disponibles por ley y descontando los ya tomados
-  const availableDays = useMemo(() => {
+  // Saldo real tomable hoy (arrastre no consumido + proporcional acumulado a
+  // la fecha en el período vigente, menos lo ya usado).
+  const normalAvailableDays = useMemo(() => {
     if (realBalance) {
       return realBalance.availableDays
     }
@@ -164,9 +172,21 @@ export function VacationWizardModal({
   }, [realBalance, seniority])
 
   const totalLawDays = realBalance ? realBalance.totalLawDays : (seniority.hasCompletedOneYear ? Math.min(30, 15 + Math.max(0, seniority.years - 5)) : 0)
+  // Tope anual completo del período vigente (15-30 según antigüedad, sin
+  // prorratear) — límite duro del adelanto: nunca se autoriza más de esto.
+  const annualLawDays = realBalance?.annualLawDays ?? totalLawDays
   const usedDays = realBalance ? realBalance.usedDays : 0
   const carriedOverDays = realBalance?.carriedOverDays || 0
   const currentPeriod = realBalance?.period || seniority.period
+
+  // El adelanto solo tiene sentido si ya no queda saldo tomable normal.
+  const canOfferAdvance = normalAvailableDays === 0 && annualLawDays > 0
+  // Con adelanto activo, el tope pasa a ser el año COMPLETO del período
+  // vigente (no solo el proporcional a la fecha) menos lo ya usado — nunca
+  // supera el máximo anual por ley, aunque no se haya acumulado todavía.
+  const availableDays = useAdvance && canOfferAdvance
+    ? Math.max(0, annualLawDays - usedDays)
+    : normalAvailableDays
 
   // Cálculo de días solicitados
   const requestedDays = useMemo(() => {
@@ -202,7 +222,15 @@ export function VacationWizardModal({
     setEndDate('')
     setReason('Descanso anual reglamentario')
     setCreatedRequest(null)
+    setUseAdvance(false)
   }
+
+  // Cambiar de empleado invalida cualquier decisión de adelanto tomada para
+  // el empleado anterior — sin esto, seleccionar a otro empleado con saldo
+  // normal disponible podría arrastrar el checkbox marcado sin sentido.
+  useEffect(() => {
+    setUseAdvance(false)
+  }, [selectedEmpId])
 
   function handleModalClose(wantOpen: boolean) {
     if (!wantOpen) {
@@ -290,6 +318,10 @@ export function VacationWizardModal({
           remaining_days: remainingDays,
           settlement_period: seniority.period,
           reason: reason.trim(),
+          // Marca si se usó el adelanto de días no acumulados aún (ver
+          // checkbox "Adelantar días") — deja trazabilidad de que estos días
+          // no venían de saldo ya generado, para auditoría posterior.
+          is_advance: useAdvance && canOfferAdvance,
         },
       })
 
@@ -463,31 +495,15 @@ export function VacationWizardModal({
                   </div>
                 </div>
 
-                {/* Resumen del Período y Saldo Disponible */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Resumen del Período a liquidar + Saldo Posterior */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="p-3 rounded-xl border bg-muted/30 space-y-1">
                     <span className="text-[10.5px] font-medium text-muted-foreground uppercase">Período a Liquidar</span>
                     <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
                       <Calendar className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                       <span>{currentPeriod}</span>
+                      {balanceLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
                     </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl border bg-emerald-500/10 border-emerald-500/20 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10.5px] font-medium text-emerald-800 dark:text-emerald-300 uppercase">Días Disponibles</span>
-                      {balanceLoading && <Loader2 className="h-3 w-3 animate-spin text-emerald-600" />}
-                    </div>
-                    <div className="text-sm font-bold font-mono text-emerald-700 dark:text-emerald-400">
-                      {availableDays} días
-                    </div>
-                    {(usedDays > 0 || carriedOverDays > 0) && (
-                      <span className="text-[10px] text-muted-foreground block">
-                        (Período vigente: {totalLawDays}
-                        {carriedOverDays > 0 && ` + Arrastre año anterior: ${carriedOverDays}`}
-                        {usedDays > 0 && ` • Ya tomados: ${usedDays}`})
-                      </span>
-                    )}
                   </div>
 
                   <div className={cn(
@@ -502,6 +518,84 @@ export function VacationWizardModal({
                     </div>
                   </div>
                 </div>
+
+                {/* Desglose del saldo en 2 bloques separados: de dónde sale
+                    cada día disponible, antes de una sola cifra combinada. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className={cn(
+                    "p-3 rounded-xl border space-y-1",
+                    carriedOverDays > 0
+                      ? "bg-amber-500/10 border-amber-500/20"
+                      : "bg-muted/20 border-border/60 opacity-70"
+                  )}>
+                    <span className={cn(
+                      "text-[10.5px] font-medium uppercase",
+                      carriedOverDays > 0 ? "text-amber-800 dark:text-amber-300" : "text-muted-foreground"
+                    )}>
+                      Arrastre Año Anterior
+                    </span>
+                    <div className={cn(
+                      "text-sm font-bold font-mono",
+                      carriedOverDays > 0 ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"
+                    )}>
+                      {carriedOverDays} días
+                    </div>
+                    <span className="text-[10px] text-muted-foreground block">
+                      No consumidos del período previo (máx. acumulable: 2 períodos)
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border bg-emerald-500/10 border-emerald-500/20 space-y-1">
+                    <span className="text-[10.5px] font-medium text-emerald-800 dark:text-emerald-300 uppercase">
+                      Proporcional Período Vigente
+                    </span>
+                    <div className="text-sm font-bold font-mono text-emerald-700 dark:text-emerald-400">
+                      {totalLawDays} días
+                    </div>
+                    <span className="text-[10px] text-muted-foreground block">
+                      Acumulado a la fecha, de {annualLawDays} días anuales por ley
+                      {usedDays > 0 && ` • Ya tomados: ${usedDays}`}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl border bg-primary/5 border-primary/20 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10.5px] font-medium text-primary uppercase block">Total Disponible</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {useAdvance && canOfferAdvance ? 'Con adelanto del período vigente' : 'Arrastre + proporcional vigente'}
+                    </span>
+                  </div>
+                  <span className="text-lg font-black font-mono text-primary">{availableDays} días</span>
+                </div>
+
+                {/* Opción de adelanto: solo se ofrece cuando el saldo tomable
+                    normal (arrastre + proporcional a la fecha) ya está en 0.
+                    Nunca supera el tope anual completo por ley (annualLawDays). */}
+                {canOfferAdvance && (
+                  <label
+                    htmlFor="use_advance"
+                    className="flex items-start gap-2.5 p-3 rounded-xl border border-blue-500/30 bg-blue-500/5 cursor-pointer select-none"
+                  >
+                    <input
+                      id="use_advance"
+                      type="checkbox"
+                      checked={useAdvance}
+                      onChange={(e) => setUseAdvance(e.target.checked)}
+                      className="h-4 w-4 mt-0.5 rounded border-input cursor-pointer accent-blue-600"
+                    />
+                    <div className="text-xs">
+                      <span className="font-medium text-foreground">
+                        Adelantar días del período vigente ({currentPeriod})
+                      </span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        El empleado ya no tiene saldo tomable, pero puedes autorizar hasta{' '}
+                        <strong className="text-foreground">{Math.max(0, annualLawDays - usedDays)} días</strong> del
+                        año completo (aún no acumulados proporcionalmente) — nunca más del máximo anual por ley.
+                      </p>
+                    </div>
+                  </label>
+                )}
 
                 {/* Selector de Rango de Fechas Integrado (Rango de Salida y Retorno) */}
                 <div className="space-y-2">

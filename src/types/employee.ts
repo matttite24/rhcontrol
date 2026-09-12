@@ -319,6 +319,8 @@ export interface VacationRequestMetadata {
   settlement_period: string
   reason?: string
   sub_type?: string
+  /** true si se autorizaron días del período vigente aún no acumulados proporcionalmente (ver checkbox "Adelantar días" en VacationWizardModal). */
+  is_advance?: boolean
 }
 
 export type IncidentInsert = Omit<Incident, 'id' | 'created_at' | 'updated_at' | 'employee'>
