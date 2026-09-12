@@ -132,6 +132,9 @@ export function EmployeeForm({
   const [birthDate, setBirthDate] = useState<string>(employee?.birth_date ?? '')
   const [reserveFunds, setReserveFunds] = useState<string>(employee?.reserve_funds ?? 'pagar_ano')
   const [paymentType, setPaymentType] = useState<string>(employee?.payment_type ?? 'Transferencia')
+  const [biweeklyAdvanceAmount, setBiweeklyAdvanceAmount] = useState<string>(
+    employee?.biweekly_advance_amount != null ? String(employee.biweekly_advance_amount) : ''
+  )
 
   // Estado para Horario Laboral
   const [schedules, setSchedules] = useState<ScheduleDayItem[]>(() =>
@@ -313,6 +316,7 @@ export function EmployeeForm({
       contract_type:    (data.get('contract_type') as string) || 'Indefinido',
       payment_type:     paymentType,
       bank_name:        paymentType === 'Transferencia' ? ((data.get('bank_name') as string)?.trim() || null) : null,
+      bank_code:        paymentType === 'Transferencia' ? ((data.get('bank_code') as string)?.trim() || null) : null,
       account_type:     paymentType === 'Transferencia' ? ((data.get('account_type') as string) || 'Ahorros') : null,
       account_number:   paymentType === 'Transferencia' ? ((data.get('account_number') as string)?.trim() || null) : null,
       check_issuing_bank: paymentType === 'Cheque' ? ((data.get('check_issuing_bank') as string)?.trim() || null) : null,
@@ -324,6 +328,7 @@ export function EmployeeForm({
       iess_code:           (data.get('iess_code') as string)?.trim() || null,
       personal_charges:    parseInt(data.get('personal_charges') as string, 10) || 0,
       is_owner_manager:    data.get('is_owner_manager') === 'on',
+      biweekly_advance_amount: biweeklyAdvanceAmount.trim() !== '' ? Number(biweeklyAdvanceAmount) : null,
     }
 
     try {
@@ -542,6 +547,8 @@ export function EmployeeForm({
             updateSalaryItem={updateSalaryItem}
             readOnly={readOnly}
             selectClasses={selectClasses}
+            biweeklyAdvanceAmount={biweeklyAdvanceAmount}
+            setBiweeklyAdvanceAmount={setBiweeklyAdvanceAmount}
           />
         </TabsContent>
 

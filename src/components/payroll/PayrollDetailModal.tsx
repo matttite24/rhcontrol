@@ -107,6 +107,8 @@ export interface PayrollEmployeeCalculation {
   loans: number
   mealDeductions: number
   otherDeductions: number
+  /** Anticipo quincenal recurrente descontado en este corte (0 si no aplica — ver calculatePayroll). */
+  biweeklyAdvanceDeducted: number
   totalDeductions: number
 
   // Neto
@@ -579,6 +581,14 @@ export function PayrollDetailModal({
                       <div className="flex justify-between items-center py-1 border-b border-border/40">
                         <span className="text-muted-foreground">Otras Deducciones</span>
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.otherDeductions.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {item.biweeklyAdvanceDeducted > 0 && (
+                      <div className="flex justify-between items-center py-1 border-b border-border/40">
+                        <span className="text-muted-foreground" title="Anticipo pagado a mitad de mes, descontado aquí para no duplicarlo">
+                          Anticipo Quincenal
+                        </span>
+                        <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.biweeklyAdvanceDeducted.toFixed(2)}</span>
                       </div>
                     )}
                     {item.details.deductionItems.length === 0 && item.iessPersonal === 0 && (

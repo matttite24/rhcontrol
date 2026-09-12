@@ -29,6 +29,15 @@ function toIsoDate(d: Date) {
   return `${year}-${month}-${day}`
 }
 
+/** Días completos entre dos fechas ISO (YYYY-MM-DD), inclusive del punto de inicio. */
+function daysBetweenIso(fromIso: string, toIso: string): number {
+  const [fy, fm, fd] = fromIso.split('-').map(Number)
+  const [ty, tm, td] = toIso.split('-').map(Number)
+  const fromUtc = Date.UTC(fy, fm - 1, fd)
+  const toUtc = Date.UTC(ty, tm - 1, td)
+  return Math.round((toUtc - fromUtc) / 86400000)
+}
+
 /**
  * Calcula los días efectivamente trabajados por un empleado en el rango del
  * corte: días calendario que son día laborable según su horario semanal
@@ -302,8 +311,17 @@ export function calculatePayroll({
       }
     }
 
+    // e.2 Anticipo Quincenal Recurrente (ver employees.biweekly_advance_amount):
+    // se paga aparte a mitad de mes, así que se resta del rol MENSUAL para no
+    // duplicar el pago. Solo aplica si el corte cubre más de 15 días — un
+    // corte quincenal (≤15 días) YA ES el pago del anticipo en sí, restarlo
+    // ahí lo descontaría dos veces.
+    const cutDurationDays = daysBetweenIso(startDate, endDate) + 1
+    const biweeklyAdvanceAmount = Number(emp.biweekly_advance_amount) || 0
+    const biweeklyAdvanceDeducted = cutDurationDays > 15 ? biweeklyAdvanceAmount : 0
+
     const totalEconomicDeductions =
-      empDeductions.reduce((sum, d) => sum + Number(d.amount || 0), 0) + mealDeductions
+      empDeductions.reduce((sum, d) => sum + Number(d.amount || 0), 0) + mealDeductions + biweeklyAdvanceDeducted
     const totalDeductions = Number((iessPersonal + totalEconomicDeductions).toFixed(2))
 
     // f. Sueldo Neto a Recibir
@@ -421,6 +439,7 @@ export function calculatePayroll({
       loans,
       mealDeductions,
       otherDeductions,
+      biweeklyAdvanceDeducted,
       totalDeductions,
 
       netSalary,
@@ -462,6 +481,17 @@ export function calculatePayroll({
                       : recurringDeductionDetail.title,
                   amount: recurringDeductionDetail.amount,
                   type: 'alimentacion' as const,
+                  is_recurring: true,
+                  date: endDate,
+                },
+              ]
+            : []),
+          ...(biweeklyAdvanceDeducted > 0
+            ? [
+                {
+                  title: 'Anticipo Quincenal',
+                  amount: biweeklyAdvanceDeducted,
+                  type: 'anticipo_quincenal' as const,
                   is_recurring: true,
                   date: endDate,
                 },

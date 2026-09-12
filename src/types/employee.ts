@@ -79,14 +79,23 @@ export interface Employee {
   contract_type: string | null
   payment_type: string | null
   bank_name: string | null
+  /** Código de banco (2-4 dígitos), ingresado manualmente junto al nombre del banco. */
+  bank_code: string | null
   account_type: string | null
   account_number: string | null
   check_issuing_bank: string | null
-  
+
   // Configuraciones Generales
   reserve_funds: string | null
   accumulate_decimals: boolean
   spouse_extension: boolean
+  /**
+   * Anticipo quincenal recurrente (ej. $200), opcional. Se paga a mitad de
+   * mes y se resta del rol mensual completo — ver calculatePayroll, que solo
+   * lo resta si el corte cubre más de 15 días (un corte quincenal ya ES el
+   * pago del anticipo, no debe restarse de sí mismo).
+   */
+  biweekly_advance_amount: number | null
   
   // Otras Configuraciones / IESS
   iess_code: string | null

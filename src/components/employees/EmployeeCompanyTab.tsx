@@ -248,6 +248,22 @@ export function EmployeeCompanyTab({
                   className={readOnly ? "bg-muted/30 cursor-default" : ""}
                 />
               </div>
+              <div className="md:col-span-1 space-y-1.5">
+                <Label htmlFor="bank_code" className="text-xs font-medium">Cód. Banco</Label>
+                <Input
+                  id="bank_code"
+                  name="bank_code"
+                  readOnly={readOnly}
+                  disabled={readOnly}
+                  defaultValue={employee?.bank_code ?? ''}
+                  placeholder="Ej. 10"
+                  inputMode="numeric"
+                  pattern="\d{2,4}"
+                  maxLength={4}
+                  title="Código de banco: 2 a 4 dígitos numéricos"
+                  className={readOnly ? "bg-muted/30 cursor-default font-mono" : "font-mono"}
+                />
+              </div>
               <div className="md:col-span-2 space-y-1.5">
                 <Label htmlFor="account_type" className="text-xs font-medium">Tipo de Cuenta</Label>
                 <select
@@ -261,7 +277,7 @@ export function EmployeeCompanyTab({
                   <option value="Corriente">Corriente</option>
                 </select>
               </div>
-              <div className="md:col-span-3 space-y-1.5">
+              <div className="md:col-span-2 space-y-1.5">
                 <Label htmlFor="account_number" className="text-xs font-medium">Número de Cuenta</Label>
                 <Input
                   id="account_number"

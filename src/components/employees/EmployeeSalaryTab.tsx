@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { DollarSign, Plus, Trash2, CheckCircle2 } from 'lucide-react'
+import { DollarSign, Plus, Trash2, CheckCircle2, Wallet } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface EmployeeSalaryTabProps {
@@ -17,6 +17,9 @@ interface EmployeeSalaryTabProps {
   updateSalaryItem: <K extends keyof SalaryRowItem>(index: number, field: K, value: SalaryRowItem[K]) => void
   readOnly?: boolean
   selectClasses: string
+  /** Anticipo quincenal recurrente, opcional (ver employees.biweekly_advance_amount). Cadena vacía = sin valor configurado. */
+  biweeklyAdvanceAmount: string
+  setBiweeklyAdvanceAmount: (val: string) => void
 }
 
 export function EmployeeSalaryTab({
@@ -26,6 +29,8 @@ export function EmployeeSalaryTab({
   updateSalaryItem,
   readOnly = false,
   selectClasses,
+  biweeklyAdvanceAmount,
+  setBiweeklyAdvanceAmount,
 }: EmployeeSalaryTabProps) {
   const totalSalary = salaries.reduce((acc, s) => acc + (Number(s.amount) || 0), 0)
   const taxableSalary = salaries
@@ -55,6 +60,42 @@ export function EmployeeSalaryTab({
           <div className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 text-xs font-medium">
             Total Ingresos: <span className="font-bold font-mono text-sm">${totalSalary.toFixed(2)}</span>
           </div>
+        </div>
+      </div>
+
+      {/* Anticipo Quincenal Recurrente — valor opcional aparte de los rubros
+          de employee_salaries: no afecta el total de ingresos mostrado
+          arriba, se resta al calcular el rol MENSUAL (no en cortes
+          quincenales de ≤15 días, ver calculatePayroll). */}
+      <div className="p-4 rounded-xl border bg-card/60 shadow-xs space-y-3">
+        <div className="flex items-start gap-2">
+          <Wallet className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Anticipo Quincenal Recurrente
+            </h4>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Valor opcional que este empleado recibe a mitad de mes (ej. $200). Se descuenta automáticamente
+              del rol mensual completo — no aplica en cortes quincenales.
+            </p>
+          </div>
+        </div>
+        <div className="max-w-[220px] space-y-1">
+          <Label htmlFor="biweekly_advance_amount" className="text-[11px] font-medium text-muted-foreground">
+            Valor de la Quincena ($)
+          </Label>
+          <Input
+            id="biweekly_advance_amount"
+            type="number"
+            min="0"
+            step="0.01"
+            readOnly={readOnly}
+            disabled={readOnly}
+            value={biweeklyAdvanceAmount}
+            onChange={(e) => setBiweeklyAdvanceAmount(e.target.value)}
+            placeholder="Ej. 200.00 (dejar vacío si no aplica)"
+            className={cn("h-9 text-xs font-mono", readOnly && "bg-muted/30 cursor-default")}
+          />
         </div>
       </div>
 
