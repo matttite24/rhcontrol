@@ -403,6 +403,30 @@ export interface PayrollReport {
 
 export type PayrollReportInsert = Omit<PayrollReport, 'id' | 'created_at' | 'updated_at'>
 
+/**
+ * Ajuste de "horas efectivamente cumplidas" en horas extras aprobadas,
+ * capturado durante la revisión de un rol en borrador (ver pestaña Novedades
+ * en PayrollDetailModal). Ligado al reporte, no a la solicitud — la
+ * solicitud original (documento autorizado) nunca se modifica.
+ */
+export interface PayrollOvertimeAdjustment {
+  id: string
+  organization_id: string
+  payroll_report_id: string
+  shift_request_id: string
+  employee_id: string
+  actual_hours: number
+  reason: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type PayrollOvertimeAdjustmentInsert = Omit<
+  PayrollOvertimeAdjustment,
+  'id' | 'created_at' | 'updated_at' | 'created_by'
+>
+
 export type EmployeeDocType =
   | 'contrato'
   | 'legalizacion_mdt'

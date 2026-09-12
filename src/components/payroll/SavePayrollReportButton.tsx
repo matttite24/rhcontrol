@@ -63,7 +63,10 @@ export function SavePayrollReportButton({
           total_income: totalIncome,
           total_deductions: totalDeductions,
           total_net: totalNet,
-          status: 'cerrado',
+          // Se guarda como borrador, no cerrado: el flujo ahora es Guardar
+          // Borrador -> revisar Novedades (ajustar horas efectivas de horas
+          // extras) -> Generar, que recién ahí lo cierra definitivamente.
+          status: 'borrador',
           snapshot: calculations,
         })
         .select('id')
@@ -71,9 +74,9 @@ export function SavePayrollReportButton({
 
       if (error) throw error
 
-      toast.success('Reporte Guardado', 'El corte de nómina se guardó en el historial exitosamente.')
+      toast.success('Borrador guardado', 'Ahora puedes revisar Novedades antes de generar el rol definitivo.')
       setOpen(false)
-      router.push('/payroll/history')
+      router.push(`/payroll/history/${data.id}`)
       router.refresh()
     } catch (err: any) {
       console.error(err)
@@ -92,15 +95,16 @@ export function SavePayrollReportButton({
         disabled={calculations.length === 0}
       >
         <Save className="h-4 w-4" />
-        Guardar en Historial
+        Guardar Borrador
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Guardar Corte de Nómina</DialogTitle>
+            <DialogTitle>Guardar Borrador de Rol</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground mt-1">
-              Guarda este cálculo como un reporte histórico cerrado con el consolidado de todos los empleados.
+              Se guarda como borrador editable: podrás revisar Novedades (ajustar horas efectivas de horas
+              extras) antes de generar el rol definitivo.
             </DialogDescription>
           </DialogHeader>
 
@@ -148,7 +152,7 @@ export function SavePayrollReportButton({
               className="text-xs cursor-pointer gap-1.5"
             >
               {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Guardar Reporte
+              Guardar Borrador
             </Button>
           </DialogFooter>
         </DialogContent>

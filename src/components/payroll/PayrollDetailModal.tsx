@@ -1,6 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import { ShiftRequest, Incident } from '@/types/employee'
+import { ShiftRequestDetailModal } from '@/components/shifts/ShiftRequestDetailModal'
+import { IncidentDetailModal } from '@/components/incidents/IncidentDetailModal'
 import {
   Sheet,
   SheetContent,
@@ -10,22 +14,24 @@ import {
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { toast } from '@/components/ui/toast'
+import { upsertOvertimeAdjustmentAction, deleteOvertimeAdjustmentAction } from '@/lib/payroll/actions'
 import {
-  User,
-  Building,
-  Calendar,
   DollarSign,
   TrendingDown,
   TrendingUp,
   Receipt,
-  FileSpreadsheet,
   FileText,
   ChevronRight,
-  Sparkles,
   Clock,
   AlertCircle,
   FolderOpen,
+  ClipboardList,
+  Loader2,
+  Pencil,
+  RotateCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -40,6 +46,21 @@ export interface PayrollEmployeeActionItem {
   amount?: number | null
   hours?: number | null
   description?: string | null
+  /**
+   * De qué tabla viene (incidents vs shift_requests): determina qué modal de
+   * detalle abrir al hacer clic — ver openActionDetail en PayrollTableView.
+   */
+  sourceType: 'incident' | 'shift_request'
+  /** Tipo crudo de incidencia/solicitud (incident_type o request_type), para resolver qué wizard/modal de detalle corresponde. */
+  rawType?: string
+  /** Solo horas extras: 'suplementaria_50' o 'extraordinaria_100', para mostrar el recargo aplicado junto al monto. */
+  overtimeType?: string | null
+  /** true si esta hora extra tiene un ajuste de "horas efectivas" guardado para el borrador en revisión (ver pestaña Novedades). */
+  hasOvertimeAdjustment?: boolean
+  /** Motivo del ajuste, si existe. */
+  overtimeAdjustmentReason?: string | null
+  /** Horas originalmente autorizadas (antes del ajuste) — solo horas extras. */
+  originalHours?: number | null
 }
 
 export interface PayrollEmployeeCalculation {
@@ -105,6 +126,12 @@ export interface PayrollEmployeeCalculation {
   // Lista de Documentos, Solicitudes y Acciones del Empleado en el Corte
   actions: PayrollEmployeeActionItem[]
 
+  // Objetos completos (no el resumen de `actions`) para poder abrir el mismo
+  // modal de detalle que usan /shifts/requests e /incidents al hacer clic en
+  // una fila de "Documentación y Solicitudes" — ver openActionDetail.
+  rawShiftRequests: ShiftRequest[]
+  rawIncidents: Incident[]
+
   // Detalles crudos para el desglose del modal
   details: {
     salaryItems: { name: string; amount: number; type: string }[]
@@ -120,6 +147,13 @@ interface PayrollDetailModalProps {
   endDate: string
   open: boolean
   onOpenChange: (open: boolean) => void
+  /**
+   * Presentes solo si el rol está en 'borrador' (ver /payroll/history/[id]):
+   * habilitan la pestaña Novedades para editar horas efectivas. Un rol ya
+   * cerrado no los recibe — Novedades pasa a mostrarse de solo lectura.
+   */
+  payrollReportId?: string
+  organizationId?: string
 }
 
 function getInitials(name: string) {
@@ -138,14 +172,124 @@ export function PayrollDetailModal({
   endDate,
   open,
   onOpenChange,
+  payrollReportId,
+  organizationId,
 }: PayrollDetailModalProps) {
-  const [activeTab, setActiveTab] = useState<'monetary' | 'documents'>('monetary')
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<'role' | 'novedades' | 'incidencias'>('role')
+
+  // Detalle real de la novedad seleccionada (abre el mismo modal que
+  // /shifts/requests o /incidents) — se resuelve por id contra los arrays
+  // crudos que vienen en el cálculo, ver rawShiftRequests/rawIncidents.
+  const [selectedShiftRequest, setSelectedShiftRequest] = useState<ShiftRequest | null>(null)
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
+
+  // Edición del ajuste de horas efectivas en Novedades: solo un ajuste
+  // abierto a la vez, indexado por shift_request_id.
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [actualHoursInput, setActualHoursInput] = useState('')
+  const [reasonInput, setReasonInput] = useState('')
+  const [savingId, setSavingId] = useState<string | null>(null)
+
+  const shiftRequestsById = useMemo(
+    () => new Map((item?.rawShiftRequests || []).map((r) => [r.id, r])),
+    [item]
+  )
+  const incidentsById = useMemo(
+    () => new Map((item?.rawIncidents || []).map((i) => [i.id, i])),
+    [item]
+  )
 
   if (!item) return null
 
+  const canEditAdjustments = Boolean(payrollReportId && organizationId)
   const actions = item.actions || []
-  const approvedCount = actions.filter((a) => a.status === 'aprobado').length
-  const pendingCount = actions.filter((a) => a.status === 'pendiente').length
+  // Novedades: solo horas extras (donde aplica el ajuste de horas efectivas).
+  // Incidencias: todo lo demás — permisos, vacaciones, anticipos, sanciones,
+  // actas — documentación de solo lectura, sin cifras que ajustar.
+  const overtimeActions = actions.filter((a) => a.category === 'turno' && a.type === 'Horas Extras')
+  const incidentActions = actions.filter((a) => !(a.category === 'turno' && a.type === 'Horas Extras'))
+  const approvedCount = incidentActions.filter((a) => a.status === 'aprobado').length
+  const pendingCount = incidentActions.filter((a) => a.status === 'pendiente').length
+
+  function openActionDetail(action: PayrollEmployeeActionItem) {
+    if (action.sourceType === 'shift_request') {
+      const req = shiftRequestsById.get(action.id)
+      if (req) setSelectedShiftRequest(req)
+    } else {
+      const inc = incidentsById.get(action.id)
+      if (inc) setSelectedIncident(inc)
+    }
+  }
+
+  function startEditingAdjustment(action: PayrollEmployeeActionItem) {
+    setEditingId(action.id)
+    setActualHoursInput(String(action.hours ?? ''))
+    setReasonInput(action.overtimeAdjustmentReason ?? '')
+  }
+
+  async function handleSaveAdjustment(action: PayrollEmployeeActionItem) {
+    if (!payrollReportId || !organizationId || !item) return
+    const hours = Number(actualHoursInput)
+
+    if (isNaN(hours) || hours < 0) {
+      toast.error('Ingresa un número de horas válido.')
+      return
+    }
+    if (action.originalHours != null && hours > action.originalHours) {
+      toast.error('Las horas efectivas no pueden superar las horas autorizadas.')
+      return
+    }
+    if (!reasonInput.trim()) {
+      toast.error('Indica un motivo para el ajuste.')
+      return
+    }
+
+    setSavingId(action.id)
+    try {
+      const result = await upsertOvertimeAdjustmentAction({
+        organizationId,
+        payrollReportId,
+        shiftRequestId: action.id,
+        employeeId: item.employeeId,
+        actualHours: hours,
+        reason: reasonInput.trim(),
+      })
+
+      if (!result.success) {
+        toast.error('No se pudo guardar el ajuste', result.error || 'Ocurrió un error inesperado.')
+        return
+      }
+
+      toast.success('Ajuste guardado', 'Se aplicará al recalcular este borrador.')
+      setEditingId(null)
+      router.refresh()
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || 'Error al guardar el ajuste.')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  async function handleRemoveAdjustment(action: PayrollEmployeeActionItem) {
+    if (!payrollReportId) return
+    setSavingId(action.id)
+    try {
+      const result = await deleteOvertimeAdjustmentAction(payrollReportId, action.id)
+      if (!result.success) {
+        toast.error('No se pudo quitar el ajuste', result.error || 'Ocurrió un error inesperado.')
+        return
+      }
+      toast.success('Ajuste quitado', 'Se volverá a usar lo autorizado originalmente.')
+      router.refresh()
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || 'Error al quitar el ajuste.')
+    } finally {
+      setSavingId(null)
+    }
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -196,36 +340,54 @@ export function PayrollDetailModal({
               </div>
             </div>
 
-            {/* Selector de Pestañas Integrado */}
+            {/* Selector de Pestañas Integrado: Rol Detalle / Novedades / Incidencias */}
             <div className="pt-3">
-              <div className="grid grid-cols-2 bg-muted/60 p-1 rounded-xl border border-border/40">
+              <div className="grid grid-cols-3 bg-muted/60 p-1 rounded-xl border border-border/40">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('monetary')}
+                  onClick={() => setActiveTab('role')}
                   className={cn(
-                    'flex items-center justify-center gap-2 text-xs font-medium rounded-lg h-7 transition-all cursor-pointer select-none',
-                    activeTab === 'monetary'
+                    'flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg h-7 transition-all cursor-pointer select-none',
+                    activeTab === 'role'
                       ? 'bg-background text-foreground shadow-2xs font-semibold'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   <DollarSign className="h-3.5 w-3.5 text-primary" />
-                  <span>Detalles Monetarios</span>
+                  <span>Rol Detalle</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('documents')}
+                  onClick={() => setActiveTab('novedades')}
                   className={cn(
-                    'flex items-center justify-center gap-2 text-xs font-medium rounded-lg h-7 transition-all cursor-pointer select-none',
-                    activeTab === 'documents'
+                    'flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg h-7 transition-all cursor-pointer select-none',
+                    activeTab === 'novedades'
+                      ? 'bg-background text-foreground shadow-2xs font-semibold'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Clock className="h-3.5 w-3.5 text-primary" />
+                  <span>Novedades</span>
+                  {overtimeActions.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-md text-[10px] font-mono bg-muted text-muted-foreground font-semibold">
+                      {overtimeActions.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('incidencias')}
+                  className={cn(
+                    'flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg h-7 transition-all cursor-pointer select-none',
+                    activeTab === 'incidencias'
                       ? 'bg-background text-foreground shadow-2xs font-semibold'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
                   <FolderOpen className="h-3.5 w-3.5 text-primary" />
-                  <span>Documentación y Solicitudes</span>
+                  <span>Incidencias</span>
                   <span className="px-1.5 py-0.2 rounded-md text-[10px] font-mono bg-muted text-muted-foreground font-semibold">
-                    {actions.length}
+                    {incidentActions.length}
                   </span>
                 </button>
               </div>
@@ -234,7 +396,7 @@ export function PayrollDetailModal({
 
           {/* Contenido Dinámico según pestaña */}
           <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === 'monetary' ? (
+          {activeTab === 'role' ? (
             <div className="space-y-6">
               {/* Tarjetas KPI Superiores */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -288,12 +450,40 @@ export function PayrollDetailModal({
                         <span className="font-mono font-medium">${item.bonuses.toFixed(2)}</span>
                       </div>
                     )}
-                    {item.overtimeAmount > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b border-border/40">
-                        <span className="text-muted-foreground">Horas Extras Aprobadas</span>
-                        <span className="font-mono font-medium">${item.overtimeAmount.toFixed(2)}</span>
-                      </div>
-                    )}
+                    {item.overtimeAmount > 0 && (() => {
+                      // Desglose por recargo (50%/100%) sumando las solicitudes
+                      // de horas extras aprobadas del período — así se ve
+                      // exactamente cuántas horas de cada tipo equivalen al
+                      // monto total, en vez de un solo número agregado.
+                      const approvedOvertimeActions = actions.filter(
+                        (a) => a.category === 'turno' && a.type === 'Horas Extras' && a.status === 'aprobado'
+                      )
+                      const supplementary = approvedOvertimeActions.filter((a) => a.overtimeType !== 'extraordinaria_100')
+                      const extraordinary = approvedOvertimeActions.filter((a) => a.overtimeType === 'extraordinaria_100')
+                      const sumHours = (list: typeof approvedOvertimeActions) => list.reduce((s, a) => s + (a.hours || 0), 0)
+                      const sumAmount = (list: typeof approvedOvertimeActions) => list.reduce((s, a) => s + (a.amount || 0), 0)
+
+                      return (
+                        <>
+                          {supplementary.length > 0 && (
+                            <div className="flex justify-between items-center py-1 border-b border-border/40">
+                              <span className="text-muted-foreground">
+                                Horas Extras 50% ({sumHours(supplementary)} hrs)
+                              </span>
+                              <span className="font-mono font-medium">${sumAmount(supplementary).toFixed(2)}</span>
+                            </div>
+                          )}
+                          {extraordinary.length > 0 && (
+                            <div className="flex justify-between items-center py-1 border-b border-border/40">
+                              <span className="text-muted-foreground">
+                                Horas Extras 100% ({sumHours(extraordinary)} hrs)
+                              </span>
+                              <span className="font-mono font-medium">${sumAmount(extraordinary).toFixed(2)}</span>
+                            </div>
+                          )}
+                        </>
+                      )
+                    })()}
 
                     {/* Rubros de Ley Mensualizados en Ecuador — no aplican al
                         Gerente Propietario autoafiliado (sin relación de
@@ -413,12 +603,187 @@ export function PayrollDetailModal({
                 </div>
               </div>
             </div>
+          ) : activeTab === 'novedades' ? (
+            /* Pestaña Novedades: ajuste de "horas efectivamente cumplidas"
+                por hora extra aprobada. Solo editable si el rol está en
+                borrador (canEditAdjustments) — un rol cerrado se ve de solo
+                lectura, con el ajuste que ya quedó fijo en su snapshot. */
+            <div className="space-y-4">
+              <div className="flex items-start gap-2.5 p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs">
+                <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                <p className="text-amber-800 dark:text-amber-300">
+                  {canEditAdjustments
+                    ? 'Ajusta aquí si el empleado no cumplió todas las horas extra autorizadas (ej. según el biométrico). Esto NO modifica la solicitud original, solo afecta el cálculo de este rol.'
+                    : 'Este rol ya fue generado: los ajustes aquí mostrados quedaron fijos y no pueden editarse.'}
+                </p>
+              </div>
+
+              {overtimeActions.length > 0 ? (
+                <div className="rounded-xl border bg-card divide-y divide-border/60 overflow-hidden shadow-2xs">
+                  {overtimeActions.map((act) => {
+                    const isApproved = act.status === 'aprobado'
+                    const isExtraordinary = act.overtimeType === 'extraordinaria_100'
+                    const isEditing = editingId === act.id
+                    const isSaving = savingId === act.id
+
+                    return (
+                      <div key={act.id} className="p-4 text-xs space-y-2.5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-3 min-w-0">
+                            <span className="font-mono text-xs font-semibold text-foreground bg-muted/70 border border-border/80 px-2 py-1 rounded-md tracking-tight shrink-0 shadow-2xs">
+                              {act.code}
+                            </span>
+                            <div className="flex flex-col min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => openActionDetail(act)}
+                                className="font-semibold text-foreground text-xs leading-snug text-left hover:text-primary cursor-pointer"
+                              >
+                                {act.title}
+                              </button>
+                              <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-muted-foreground font-mono">
+                                <span>{act.date}</span>
+                                <span>•</span>
+                                <span className="text-foreground/80">
+                                  Recargo {isExtraordinary ? '100%' : '50%'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'text-[10px] h-5 px-2 capitalize font-medium border shrink-0',
+                              isApproved
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50'
+                                : 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800/50'
+                            )}
+                          >
+                            {act.status}
+                          </Badge>
+                        </div>
+
+                        {!isApproved ? (
+                          <p className="text-[11px] text-muted-foreground italic pl-1">
+                            Solo se pueden ajustar horas extras ya aprobadas.
+                          </p>
+                        ) : isEditing ? (
+                          <div className="rounded-lg border bg-muted/20 p-3 space-y-2.5">
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min={0}
+                                max={act.originalHours ?? undefined}
+                                step={0.25}
+                                value={actualHoursInput}
+                                onChange={(e) => setActualHoursInput(e.target.value)}
+                                className="h-8 w-24 text-xs font-mono"
+                                autoFocus
+                              />
+                              <span className="text-[11px] text-muted-foreground">
+                                de {act.originalHours ?? act.hours ?? 0} horas autorizadas
+                              </span>
+                            </div>
+                            <Input
+                              value={reasonInput}
+                              onChange={(e) => setReasonInput(e.target.value)}
+                              placeholder="Motivo del ajuste (ej. según registro del biométrico)"
+                              className="h-8 text-xs"
+                            />
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleSaveAdjustment(act)}
+                                disabled={isSaving}
+                                className="h-7 text-[11px] px-3 bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
+                              >
+                                {isSaving && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                                Guardar
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingId(null)}
+                                disabled={isSaving}
+                                className="h-7 text-[11px] px-3 cursor-pointer"
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-3 pl-1">
+                            <div className="text-[11px]">
+                              {act.hasOvertimeAdjustment ? (
+                                <span className="text-amber-700 dark:text-amber-400">
+                                  Ajustado: <strong className="font-mono">{act.hours} hrs</strong> efectivas de{' '}
+                                  {act.originalHours} autorizadas · +${Number(act.amount).toFixed(2)} al rol
+                                  {act.overtimeAdjustmentReason && (
+                                    <span className="text-muted-foreground italic"> — "{act.overtimeAdjustmentReason}"</span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">
+                                  <strong className="font-mono text-foreground">{act.hours} hrs</strong> autorizadas ·
+                                  +${Number(act.amount ?? 0).toFixed(2)} al rol
+                                </span>
+                              )}
+                            </div>
+                            {canEditAdjustments && (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => startEditingAdjustment(act)}
+                                  disabled={isSaving}
+                                  className="h-6 px-2 text-[11px] cursor-pointer gap-1"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                  {act.hasOvertimeAdjustment ? 'Editar' : 'Ajustar'}
+                                </Button>
+                                {act.hasOvertimeAdjustment && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRemoveAdjustment(act)}
+                                    disabled={isSaving}
+                                    className="h-6 px-2 text-[11px] cursor-pointer gap-1 text-muted-foreground hover:text-destructive"
+                                  >
+                                    <RotateCcw className="h-3 w-3" />
+                                    Quitar
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="p-12 text-center border rounded-xl border-dashed bg-card/40 space-y-2">
+                  <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mx-auto text-muted-foreground">
+                    <Clock className="h-5 w-5" />
+                  </div>
+                  <h5 className="font-semibold text-foreground text-xs">Sin horas extras en este período</h5>
+                  <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
+                    El empleado no tiene solicitudes de horas extras registradas en estas fechas.
+                  </p>
+                </div>
+              )}
+            </div>
           ) : (
-            /* Pestaña: Lista de Documentaciones y Acciones */
+            /* Pestaña Incidencias: documentación no monetaria de solo lectura
+                (permisos, vacaciones, anticipos, sanciones, actas). */
             <div className="space-y-4">
               <div className="flex items-center justify-between p-3.5 rounded-xl border bg-muted/20 text-xs">
                 <div className="flex items-center gap-2 text-muted-foreground font-mono">
-                  <span>Total: <strong className="text-foreground">{actions.length}</strong></span>
+                  <span>Total: <strong className="text-foreground">{incidentActions.length}</strong></span>
                   <span>•</span>
                   <span>Aprobados: <strong className="text-emerald-600 dark:text-emerald-400">{approvedCount}</strong></span>
                   <span>•</span>
@@ -429,15 +794,20 @@ export function PayrollDetailModal({
                 </span>
               </div>
 
-              {actions.length > 0 ? (
+              {incidentActions.length > 0 ? (
                 <div className="rounded-xl border bg-card divide-y divide-border/60 overflow-hidden shadow-2xs">
-                  {actions.map((act) => {
+                  {incidentActions.map((act) => {
                     const isApproved = act.status === 'aprobado'
                     const isPending = act.status === 'pendiente'
                     const isRejected = act.status === 'rechazado' || act.status === 'anulado'
 
                     return (
-                      <div key={act.id} className="p-4 hover:bg-muted/30 transition-colors flex items-start justify-between gap-4 text-xs">
+                      <button
+                        key={act.id}
+                        type="button"
+                        onClick={() => openActionDetail(act)}
+                        className="w-full p-4 hover:bg-muted/30 transition-colors duration-150 ease-out motion-reduce:transition-none flex items-start justify-between gap-4 text-xs text-left cursor-pointer"
+                      >
                         <div className="flex items-start gap-3 min-w-0">
                           <span className="font-mono text-xs font-semibold text-foreground bg-muted/70 border border-border/80 px-2 py-1 rounded-md tracking-tight shrink-0 shadow-2xs">
                             {act.code}
@@ -456,10 +826,12 @@ export function PayrollDetailModal({
                                   <span className="text-primary font-medium">{act.hours} hrs</span>
                                 </>
                               )}
-                              {act.amount && (
+                              {Boolean(act.amount) && isApproved && (
                                 <>
                                   <span>•</span>
-                                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">${Number(act.amount).toFixed(2)}</span>
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                    ${Number(act.amount).toFixed(2)}
+                                  </span>
                                 </>
                               )}
                             </div>
@@ -471,18 +843,21 @@ export function PayrollDetailModal({
                           </div>
                         </div>
 
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'text-[10px] h-5 px-2 capitalize shrink-0 font-medium border',
-                            isApproved && 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50',
-                            isPending && 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800/50',
-                            isRejected && 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/50'
-                          )}
-                        >
-                          {act.status}
-                        </Badge>
-                      </div>
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'text-[10px] h-5 px-2 capitalize font-medium border',
+                              isApproved && 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50',
+                              isPending && 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800/50',
+                              isRejected && 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/50'
+                            )}
+                          >
+                            {act.status}
+                          </Badge>
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />
+                        </div>
+                      </button>
                     )
                   })}
                 </div>
@@ -493,7 +868,7 @@ export function PayrollDetailModal({
                   </div>
                   <h5 className="font-semibold text-foreground text-xs">Sin registros en este período</h5>
                   <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
-                    El empleado no tiene solicitudes de turno, anticipos o sanciones registradas en estas fechas.
+                    El empleado no tiene permisos, vacaciones, anticipos o sanciones registradas en estas fechas.
                   </p>
                 </div>
               )}
@@ -512,6 +887,19 @@ export function PayrollDetailModal({
           </Button>
         </div>
       </SheetContent>
+
+      {/* Detalle real de la novedad seleccionada — mismo modal que usan
+          /shifts/requests e /incidents, abierto por encima de este drawer. */}
+      <ShiftRequestDetailModal
+        request={selectedShiftRequest}
+        open={Boolean(selectedShiftRequest)}
+        onOpenChange={(o) => { if (!o) setSelectedShiftRequest(null) }}
+      />
+      <IncidentDetailModal
+        incident={selectedIncident}
+        open={Boolean(selectedIncident)}
+        onOpenChange={(o) => { if (!o) setSelectedIncident(null) }}
+      />
     </Sheet>
   )
 }

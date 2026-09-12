@@ -3,12 +3,23 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PayrollTableView } from '@/components/payroll/PayrollTableView'
-import { PayrollReport } from '@/types/employee'
+import { GeneratePayrollButton } from '@/components/payroll/GeneratePayrollButton'
+import { calculatePayroll } from '@/lib/payroll/calculate'
+import {
+  PayrollReport,
+  Employee,
+  EmployeeSalary,
+  EmployeeSchedule,
+  Deduction,
+  ShiftRequest,
+  Incident,
+  PayrollOvertimeAdjustment,
+} from '@/types/employee'
 import { PayrollEmployeeCalculation } from '@/components/payroll/PayrollDetailModal'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, Users, DollarSign, TrendingUp, TrendingDown, Building, History } from 'lucide-react'
+import { ArrowLeft, Calendar, Users, DollarSign, TrendingUp, TrendingDown, Building, History, FileClock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PayrollReportDetailPageProps {
@@ -36,30 +47,138 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
   }
 
   const report = reportData as PayrollReport
-  const snapshotCalculations = (report.snapshot || []) as PayrollEmployeeCalculation[]
+  const isDraft = report.status === 'borrador'
+
+  // Un borrador se recalcula EN VIVO (empleados/solicitudes/deducciones
+  // pueden haber cambiado desde que se guardó, y los ajustes de Novedades
+  // deben reflejarse de inmediato) en vez de leer el snapshot congelado.
+  // Un rol ya cerrado sí usa su snapshot fijo — es el registro histórico.
+  let calculations: PayrollEmployeeCalculation[]
+
+  if (isDraft) {
+    let empQuery = supabase
+      .from('employees')
+      .select(`*, salaries:employee_salaries (*), schedules:employee_schedules (*)`)
+      .eq('organization_id', currentOrg.id)
+      .order('full_name')
+    if (report.department) empQuery = empQuery.eq('department', report.department)
+
+    const [
+      { data: employeesData },
+      { data: deductionsData },
+      { data: recurringData },
+      { data: shiftsData },
+      { data: incidentsData },
+      { data: adjustmentsData },
+    ] = await Promise.all([
+      empQuery,
+      supabase
+        .from('deductions')
+        .select('*')
+        .eq('organization_id', currentOrg.id)
+        .neq('status', 'anulado')
+        .gte('date', report.start_date)
+        .lte('date', report.end_date),
+      supabase
+        .from('deductions')
+        .select('*')
+        .eq('organization_id', currentOrg.id)
+        .eq('is_recurring', true)
+        .neq('status', 'anulado'),
+      supabase
+        .from('shift_requests')
+        .select('*')
+        .eq('organization_id', currentOrg.id)
+        .gte('date', report.start_date)
+        .lte('date', report.end_date)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('incidents')
+        .select('*')
+        .eq('organization_id', currentOrg.id)
+        .gte('start_date', report.start_date)
+        .lte('start_date', report.end_date)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('payroll_overtime_adjustments')
+        .select('*')
+        .eq('payroll_report_id', report.id),
+    ])
+
+    const rawEmployees = (employeesData || []) as (Employee & {
+      salaries: EmployeeSalary[]
+      schedules: EmployeeSchedule[]
+    })[]
+
+    calculations = calculatePayroll({
+      startDate: report.start_date,
+      endDate: report.end_date,
+      rawEmployees,
+      rawDeductions: (deductionsData || []) as Deduction[],
+      rawRecurringRules: (recurringData || []) as Deduction[],
+      rawShifts: (shiftsData || []) as ShiftRequest[],
+      rawIncidents: (incidentsData || []) as Incident[],
+      overtimeAdjustments: (adjustmentsData || []) as PayrollOvertimeAdjustment[],
+    })
+  } else {
+    calculations = (report.snapshot || []) as PayrollEmployeeCalculation[]
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
       <PageHeader
-        title={report.title}
-        description={`Corte del ${report.start_date} al ${report.end_date} • Guardado el ${new Date(report.created_at).toLocaleDateString('es-EC')}`}
+        title={
+          <div className="flex items-center gap-2.5">
+            <span>{report.title}</span>
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[10px] font-semibold",
+                isDraft
+                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                  : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+              )}
+            >
+              {isDraft ? 'Borrador' : 'Generado'}
+            </Badge>
+          </div>
+        }
+        description={
+          isDraft
+            ? `Corte del ${report.start_date} al ${report.end_date} • En revisión, aún no generado`
+            : `Corte del ${report.start_date} al ${report.end_date} • Guardado el ${new Date(report.created_at).toLocaleDateString('es-EC')}`
+        }
         breadcrumbs={[
           { label: 'Nómina', href: '/payroll' },
           { label: 'Historial', href: '/payroll/history' },
           { label: report.title },
         ]}
         action={
-          <Link
-            href="/payroll/history"
-            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), "gap-1.5 cursor-pointer")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver al Historial
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/payroll/history"
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), "gap-1.5 cursor-pointer")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver al Historial
+            </Link>
+            {isDraft && <GeneratePayrollButton payrollReportId={report.id} />}
+          </div>
         }
       />
 
-      {/* Resumen de KPIs Guardados */}
+      {isDraft && (
+        <div className="mx-6 mt-4 flex items-center gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
+          <FileClock className="h-4 w-4 shrink-0" />
+          <p>
+            Este rol está en <strong>borrador</strong>: revisa la pestaña <strong>Novedades</strong> en el detalle de
+            cada empleado para ajustar horas extras que no se cumplieron completamente. Los cambios se recalculan en
+            vivo hasta que pulses <strong>Generar</strong>.
+          </p>
+        </div>
+      )}
+
+      {/* Resumen de KPIs */}
       <div className="px-6 py-4 border-b bg-muted/20">
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div className="p-3.5 rounded-xl border bg-card shadow-2xs space-y-1">
@@ -68,7 +187,7 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
               Empleados
             </span>
             <p className="text-lg font-bold font-mono text-foreground">
-              {report.total_employees}
+              {calculations.length}
             </p>
           </div>
 
@@ -78,7 +197,7 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
               Total Haberes
             </span>
             <p className="text-lg font-bold font-mono text-foreground">
-              ${Number(report.total_income || 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${calculations.reduce((s, c) => s + c.totalIncome, 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
 
@@ -88,7 +207,7 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
               Total Deducciones
             </span>
             <p className="text-lg font-bold font-mono text-rose-600 dark:text-rose-400">
-              -${Number(report.total_deductions || 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              -${calculations.reduce((s, c) => s + c.totalDeductions, 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
 
@@ -98,18 +217,20 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
               Neto Liquidado
             </span>
             <p className="text-lg font-black font-mono text-primary">
-              ${Number(report.total_net || 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${calculations.reduce((s, c) => s + c.netSalary, 0).toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Tabla con el snapshot del reporte histórico */}
+      {/* Tabla con el cálculo (en vivo si es borrador, snapshot fijo si está cerrado) */}
       <div className="flex-1 p-6 md:p-8 w-full">
         <PayrollTableView
-          calculations={snapshotCalculations}
+          calculations={calculations}
           startDate={report.start_date}
           endDate={report.end_date}
+          payrollReportId={isDraft ? report.id : undefined}
+          organizationId={isDraft ? currentOrg.id : undefined}
         />
       </div>
     </div>

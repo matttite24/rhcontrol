@@ -20,6 +20,9 @@ interface PayrollTableViewProps {
   calculations: PayrollEmployeeCalculation[]
   startDate: string
   endDate: string
+  /** Solo si el rol está en borrador: habilita la pestaña Novedades (editable) en el drawer de detalle. */
+  payrollReportId?: string
+  organizationId?: string
 }
 
 function getInitials(name: string) {
@@ -36,6 +39,8 @@ export function PayrollTableView({
   calculations,
   startDate,
   endDate,
+  payrollReportId,
+  organizationId,
 }: PayrollTableViewProps) {
   const [selectedEmployee, setSelectedEmployee] = useState<PayrollEmployeeCalculation | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -182,6 +187,8 @@ export function PayrollTableView({
         endDate={endDate}
         open={modalOpen}
         onOpenChange={setModalOpen}
+        payrollReportId={payrollReportId}
+        organizationId={organizationId}
       />
     </>
   )

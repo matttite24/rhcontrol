@@ -72,6 +72,38 @@ const DAYS_OF_WEEK_MAP: Record<number, DayOfWeek> = {
   6: 'Sábado',
 }
 
+const WEEKDAY_OPTIONS: { value: number; label: DayOfWeek }[] = [
+  { value: 1, label: 'Lunes' },
+  { value: 2, label: 'Martes' },
+  { value: 3, label: 'Miércoles' },
+  { value: 4, label: 'Jueves' },
+  { value: 5, label: 'Viernes' },
+  { value: 6, label: 'Sábado' },
+  { value: 0, label: 'Domingo' },
+]
+
+/**
+ * Calcula las próximas `count` fechas (ISO) que caen en `weekday` (0=Domingo,
+ * ..., 6=Sábado), empezando desde `fromDate` inclusive. Ej. "Sábado" x 3 desde
+ * hoy da los próximos 3 sábados — para solicitudes de horas extras repetidas
+ * (ver toggle "Repetir" en el Paso 2).
+ */
+function getUpcomingWeekdayDates(fromDate: string, weekday: number, count: number): string[] {
+  const [y, m, d] = fromDate.split('-').map(Number)
+  const start = new Date(y, m - 1, d)
+  const diff = (weekday - start.getDay() + 7) % 7
+  start.setDate(start.getDate() + diff)
+
+  const dates: string[] = []
+  for (let i = 0; i < count; i++) {
+    const dt = new Date(start)
+    dt.setDate(start.getDate() + i * 7)
+    const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+    dates.push(iso)
+  }
+  return dates
+}
+
 export function OvertimeWizardModal({
   organizationId,
   organizationName = 'RH Garden',
@@ -100,6 +132,17 @@ export function OvertimeWizardModal({
   const [overtimeType, setOvertimeType] = useState<'suplementaria_50' | 'extraordinaria_100'>('suplementaria_50')
   const [overtimeTypeTouched, setOvertimeTypeTouched] = useState(false)
   const [createdRequest, setCreatedRequest] = useState<ShiftRequest | null>(null)
+
+  // Modo "Repetir" (solicitud en lote): en vez de una única fecha, se generan
+  // N solicitudes independientes para los próximos N días de la semana
+  // elegida (ej. "Sábado" x 3 = los próximos 3 sábados), todas con el mismo
+  // horario/tipo/motivo. Cada una queda como una fila propia en shift_requests,
+  // aprobable/editable por separado — igual que el resto del sistema.
+  const [isBatchMode, setIsBatchMode] = useState(false)
+  const [batchWeekday, setBatchWeekday] = useState<number>(6) // Sábado por defecto
+  const [batchCount, setBatchCount] = useState(3)
+  const [createdBatch, setCreatedBatch] = useState<{ date: string; success: boolean; error?: string }[]>([])
+  const [batchProgress, setBatchProgress] = useState(0)
 
   // Horarios del empleado seleccionado (si no vienen precargados)
   const [employeeSchedules, setEmployeeSchedules] = useState<EmployeeSchedule[]>([])
@@ -191,6 +234,14 @@ export function OvertimeWizardModal({
     return employeeSchedules.find((s) => s.day_of_week === dayName) || null
   }, [date, employeeSchedules])
 
+  // Fechas resultantes del modo "Repetir": próximas `batchCount` ocurrencias
+  // de `batchWeekday` a partir de `date` (inclusive, si `date` ya cae en ese
+  // día de semana). Se recalcula al vuelo — nada se guarda hasta confirmar.
+  const batchDates = useMemo(() => {
+    if (!isBatchMode || !date || batchCount <= 0) return []
+    return getUpcomingWeekdayDates(date, batchWeekday, batchCount)
+  }, [isBatchMode, date, batchWeekday, batchCount])
+
   // Cálculo de horas trabajadas
   const calculatedHours = useMemo(() => {
     if (!startTime || !endTime) return 0
@@ -278,6 +329,11 @@ export function OvertimeWizardModal({
     setOvertimeTypeTouched(false)
     setCreatedRequest(null)
     setShowConfirmClose(false)
+    setIsBatchMode(false)
+    setBatchWeekday(6)
+    setBatchCount(3)
+    setCreatedBatch([])
+    setBatchProgress(0)
   }
 
   function handleRequestClose() {
@@ -312,6 +368,11 @@ export function OvertimeWizardModal({
       return
     }
 
+    if (isBatchMode) {
+      await handleCreateBatchRequests()
+      return
+    }
+
     setLoading(true)
     try {
       const result = await createOvertimeRequestAction({
@@ -340,6 +401,72 @@ export function OvertimeWizardModal({
     } catch (err: any) {
       console.error(err)
       toast.error(err.message || 'Error al generar la solicitud.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /**
+   * Crea una solicitud independiente por cada fecha del lote (ver batchDates)
+   * — mismo horario/tipo/motivo, pero cada una queda como su propia fila en
+   * shift_requests, aprobable/editable por separado. Se lanzan en paralelo
+   * (Promise.allSettled, no Promise.all): un fallo puntual en una fecha no
+   * debe descartar los éxitos del resto del lote, y se reporta cuál falló.
+   */
+  async function handleCreateBatchRequests() {
+    if (batchDates.length === 0) {
+      toast.error('No hay fechas para generar en el lote.')
+      return
+    }
+
+    setLoading(true)
+    setBatchProgress(0)
+    try {
+      const results = await Promise.allSettled(
+        batchDates.map((batchDate) =>
+          createOvertimeRequestAction({
+            organizationId,
+            employeeId: selectedEmpId,
+            date: batchDate,
+            startTime,
+            endTime,
+            hours: calculatedHours,
+            reason,
+            overtimeType,
+            isHoliday,
+            isWorkday: activeDaySchedule ? activeDaySchedule.is_workday : null,
+          }).then((r) => {
+            setBatchProgress((p) => p + 1)
+            return r
+          })
+        )
+      )
+
+      const summary = results.map((r, i) => {
+        if (r.status === 'fulfilled' && r.value.success) {
+          return { date: batchDates[i], success: true }
+        }
+        const error = r.status === 'fulfilled' ? r.value.error : (r.reason as Error)?.message
+        return { date: batchDates[i], success: false, error: error || 'Error desconocido' }
+      })
+
+      setCreatedBatch(summary)
+      setStep(4)
+
+      const successCount = summary.filter((s) => s.success).length
+      if (successCount === summary.length) {
+        toast.success(`${successCount} solicitudes de horas extras generadas con éxito.`)
+      } else if (successCount > 0) {
+        toast.info(`${successCount} de ${summary.length} solicitudes generadas. Revisa las que fallaron.`)
+      } else {
+        toast.error('No se pudo generar ninguna solicitud del lote.')
+      }
+
+      if (onSuccess) onSuccess()
+      router.refresh()
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || 'Error al generar el lote de solicitudes.')
     } finally {
       setLoading(false)
     }
@@ -524,7 +651,82 @@ export function OvertimeWizardModal({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                {/* Toggle "Repetir": genera una solicitud independiente por cada
+                    ocurrencia futura del día de semana elegido, en vez de una
+                    sola fecha — ej. "Sábado" x 3 = próximos 3 sábados. */}
+                <label
+                  htmlFor="batch_mode"
+                  className="flex items-center gap-2.5 p-3 rounded-xl border bg-muted/10 cursor-pointer select-none"
+                >
+                  <input
+                    id="batch_mode"
+                    type="checkbox"
+                    checked={isBatchMode}
+                    onChange={(e) => setIsBatchMode(e.target.checked)}
+                    className="h-4 w-4 rounded border-input cursor-pointer accent-primary"
+                  />
+                  <div className="text-xs">
+                    <span className="font-medium text-foreground">Repetir en varias fechas</span>
+                    <p className="text-[11px] text-muted-foreground">
+                      Genera una solicitud independiente por cada semana, para el mismo día y horario.
+                    </p>
+                  </div>
+                </label>
+
+                {isBatchMode ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="batch_weekday" className="text-xs font-medium">
+                        Día de la Semana *
+                      </Label>
+                      <select
+                        id="batch_weekday"
+                        value={batchWeekday}
+                        onChange={(e) => setBatchWeekday(Number(e.target.value))}
+                        className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-xs text-foreground focus:ring-1 focus:ring-ring cursor-pointer"
+                      >
+                        {WEEKDAY_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="batch_count" className="text-xs font-medium">
+                        Cantidad de Repeticiones *
+                      </Label>
+                      <Input
+                        id="batch_count"
+                        type="number"
+                        min={1}
+                        max={26}
+                        value={batchCount}
+                        onChange={(e) => setBatchCount(Math.max(1, Math.min(26, Number(e.target.value) || 1)))}
+                        className="h-9 text-xs"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2 space-y-1.5">
+                      <Label className="text-xs font-medium">A partir de</Label>
+                      <DatePicker
+                        id="batch_start_date"
+                        name="batch_start_date"
+                        value={date}
+                        onChange={(val) => setDate(val)}
+                        placeholder="Seleccionar fecha de referencia"
+                      />
+                      {batchDates.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {batchDates.map((d) => (
+                            <Badge key={d} variant="outline" className="text-[10px] font-mono bg-primary/5 border-primary/20 text-primary">
+                              {formatLongDate(d)}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
                   <div className="space-y-1.5">
                     <Label htmlFor="date" className="text-xs font-medium">
                       Fecha Autorizada *
@@ -537,29 +739,30 @@ export function OvertimeWizardModal({
                       placeholder="Seleccionar fecha"
                     />
                   </div>
+                )}
 
-                  <div className="space-y-1.5">
-                    <Label htmlFor="overtime_type" className="text-xs font-medium">
-                      Tipo de Recargo *
-                    </Label>
-                    <select
-                      id="overtime_type"
-                      value={overtimeType}
-                      onChange={(e) => {
-                        setOvertimeType(e.target.value as any)
-                        setOvertimeTypeTouched(true)
-                      }}
-                      className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-xs text-foreground focus:ring-1 focus:ring-ring cursor-pointer"
-                    >
-                      <option value="suplementaria_50">Suplementaria (50% Recargo)</option>
-                      <option value="extraordinaria_100">Extraordinaria (100% Feriados / Fines de Semana)</option>
-                    </select>
-                    {!overtimeTypeTouched && (
-                      <p className="text-[10px] text-muted-foreground italic">
-                        Sugerido automáticamente según el horario habitual{isHoliday ? ' y el feriado marcado' : ''}.
-                      </p>
-                    )}
-                  </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="overtime_type" className="text-xs font-medium">
+                    Tipo de Recargo *
+                  </Label>
+                  <select
+                    id="overtime_type"
+                    value={overtimeType}
+                    onChange={(e) => {
+                      setOvertimeType(e.target.value as any)
+                      setOvertimeTypeTouched(true)
+                    }}
+                    className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-xs text-foreground focus:ring-1 focus:ring-ring cursor-pointer"
+                  >
+                    <option value="suplementaria_50">Suplementaria (50% Recargo)</option>
+                    <option value="extraordinaria_100">Extraordinaria (100% Feriados / Fines de Semana)</option>
+                  </select>
+                  {!overtimeTypeTouched && (
+                    <p className="text-[10px] text-muted-foreground italic">
+                      Sugerido automáticamente según el horario habitual{isHoliday ? ' y el feriado marcado' : ''}.
+                      {isBatchMode && ' Se aplica igual a todas las fechas del lote.'}
+                    </p>
+                  )}
                 </div>
 
                 {/* Checkbox: Marcar la fecha como feriado (no existe calendario de feriados en el sistema) */}
@@ -667,21 +870,94 @@ export function OvertimeWizardModal({
                 <div className="rounded-xl border bg-card p-4 space-y-2.5 text-xs">
                   <h4 className="font-bold text-foreground flex items-center gap-1.5 border-b pb-2">
                     <FileText className="h-3.5 w-3.5 text-primary" />
-                    Resumen de la Autorización
+                    {isBatchMode ? `Resumen de la Autorización (${batchDates.length} solicitudes)` : 'Resumen de la Autorización'}
                   </h4>
                   <div className="grid grid-cols-2 gap-2 text-muted-foreground">
                     <div>Empleado: <span className="font-medium text-foreground">{selectedEmp?.full_name}</span></div>
-                    <div>Fecha Autorizada: <span className="font-medium text-foreground">{formatLongDate(date)}</span></div>
+                    {!isBatchMode && (
+                      <div>Fecha Autorizada: <span className="font-medium text-foreground">{formatLongDate(date)}</span></div>
+                    )}
                     <div>Jornada Extra: <span className="font-medium font-mono text-foreground">{startTime} a {endTime}</span></div>
-                    <div>Duración: <span className="font-medium font-mono text-primary">{calculatedHours} horas</span></div>
+                    <div>Duración por fecha: <span className="font-medium font-mono text-primary">{calculatedHours} horas</span></div>
                     <div className="col-span-2">Recargo: <span className="font-medium text-foreground">{overtimeType === 'suplementaria_50' ? '50% (Suplementaria)' : '100% (Extraordinaria)'}</span></div>
+                    {isBatchMode && (
+                      <div className="col-span-2">
+                        <span>Fechas:</span>
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {batchDates.map((d) => (
+                            <Badge key={d} variant="outline" className="text-[10px] font-mono bg-primary/5 border-primary/20 text-primary">
+                              {formatLongDate(d)}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* PASO 4: Solicitud Generada e Impresión */}
-            {step === 4 && createdRequest && (
+            {/* PASO 4 (modo lote): Resultado de las N Solicitudes Generadas */}
+            {step === 4 && isBatchMode && createdBatch.length > 0 && (
+              <div className="space-y-5 animate-in fade-in-50 duration-200">
+                {(() => {
+                  const successCount = createdBatch.filter((b) => b.success).length
+                  const allSucceeded = successCount === createdBatch.length
+                  return (
+                    <div
+                      className={cn(
+                        "flex items-center gap-3 p-3.5 rounded-xl border text-xs",
+                        allSucceeded
+                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                          : "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400"
+                      )}
+                    >
+                      {allSucceeded ? (
+                        <CheckCircle2 className="h-5 w-5 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="h-5 w-5 shrink-0" />
+                      )}
+                      <div>
+                        <span className="font-bold">
+                          {successCount} de {createdBatch.length} solicitudes generadas
+                        </span>
+                        <p className="mt-0.5 opacity-90">
+                          {allSucceeded
+                            ? 'Todas se registraron como Pendiente de Aprobación.'
+                            : 'Revisa las fechas que fallaron abajo; el resto ya quedó registrado.'}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                <div className="rounded-xl border bg-card divide-y">
+                  {createdBatch.map((entry) => (
+                    <div key={entry.date} className="flex items-center justify-between p-3 text-xs">
+                      <div className="flex items-center gap-2.5">
+                        {entry.success ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+                        )}
+                        <span className="font-medium text-foreground">{formatLongDate(entry.date)}</span>
+                      </div>
+                      {!entry.success && (
+                        <span className="text-destructive text-[11px]">{entry.error}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-xl border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Empleado:</span> {selectedEmp?.full_name} ·{' '}
+                  <span className="font-medium text-foreground">Horario:</span> {startTime} a {endTime} ({calculatedHours} horas c/u)
+                </div>
+              </div>
+            )}
+
+            {/* PASO 4 (individual): Solicitud Generada e Impresión */}
+            {step === 4 && !isBatchMode && createdRequest && (
               <div className="space-y-5 animate-in fade-in-50 duration-200">
                 <div className="flex items-center gap-3 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400">
                   <CheckCircle2 className="h-5 w-5 shrink-0" />
@@ -794,7 +1070,14 @@ export function OvertimeWizardModal({
                   type="button"
                   size="sm"
                   onClick={() => setStep(3)}
-                  disabled={!date || !startTime || !endTime || calculatedHours <= 0 || Boolean(scheduleOverlapWarning)}
+                  disabled={
+                    !date ||
+                    !startTime ||
+                    !endTime ||
+                    calculatedHours <= 0 ||
+                    Boolean(scheduleOverlapWarning) ||
+                    (isBatchMode && batchDates.length === 0)
+                  }
                   className="gap-1.5 cursor-pointer font-medium"
                 >
                   Siguiente: Motivo
@@ -813,18 +1096,18 @@ export function OvertimeWizardModal({
                   {loading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Generando...
+                      {isBatchMode ? `Generando ${batchProgress}/${batchDates.length}...` : 'Generando...'}
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="h-4 w-4" />
-                      Generar Solicitud
+                      {isBatchMode ? `Generar ${batchDates.length} Solicitudes` : 'Generar Solicitud'}
                     </>
                   )}
                 </Button>
               )}
 
-              {step === 4 && (
+              {step === 4 && !isBatchMode && (
                 <Button
                   type="button"
                   size="sm"

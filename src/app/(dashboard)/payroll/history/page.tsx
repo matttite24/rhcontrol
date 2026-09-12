@@ -192,7 +192,7 @@ export default async function PayrollHistoryPage({ searchParams }: PayrollHistor
                           className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), "h-8 text-xs gap-1.5 cursor-pointer")}
                         >
                           <Eye className="h-3.5 w-3.5" />
-                          Ver Reporte
+                          {report.status === 'borrador' ? 'Continuar revisión' : 'Ver Reporte'}
                         </Link>
                       </TableCell>
                     </TableRow>
