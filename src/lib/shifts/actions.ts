@@ -60,6 +60,24 @@ function calculateVacationPeriod(hireDateStr: string) {
   const rawAccrued = (monthsInPeriod * annualLawDays) / 12
   const accruedToDate = Math.round(rawAccrued * 2) / 2
 
+  // Período INMEDIATO ANTERIOR (el año previo al vigente), para arrastrar el
+  // saldo no consumido — el Código del Trabajo de Ecuador permite acumular
+  // vacaciones hasta 2 períodos (no prescriben automáticamente cada año). Si
+  // el período anterior empieza antes de la fecha de ingreso, no existe
+  // (empleado con menos de 1 año de antigüedad en el período vigente).
+  const previousPeriodStart = new Date(periodStart.getFullYear() - 1, periodStart.getMonth(), periodStart.getDate())
+  const previousPeriodEnd = periodStart // el fin del anterior es el inicio del vigente
+  const previousPeriodExists = previousPeriodStart >= hire
+
+  // Antigüedad (en años completos) al CIERRE del período anterior — determina
+  // cuántos días anuales le correspondían en ese momento, no los de hoy.
+  const yearsAtPreviousPeriodEnd = Math.floor(
+    (previousPeriodEnd.getTime() - hire.getTime()) / (1000 * 60 * 60 * 24 * 365)
+  )
+  const previousPeriodAnnualDays = previousPeriodExists
+    ? Math.min(30, 15 + Math.max(0, yearsAtPreviousPeriodEnd - 5))
+    : 0
+
   const iso = (d: Date) => d.toISOString().split('T')[0]
 
   return {
@@ -71,6 +89,10 @@ function calculateVacationPeriod(hireDateStr: string) {
     periodStartDate: iso(periodStart),
     periodEndDate: iso(periodEnd),
     periodLabel: `Período ${iso(periodStart)} a ${iso(periodEnd)}`,
+    previousPeriodExists,
+    previousPeriodStartDate: iso(previousPeriodStart),
+    previousPeriodEndDate: iso(previousPeriodEnd),
+    previousPeriodAnnualDays,
   }
 }
 
@@ -596,6 +618,8 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
   /** @deprecated Usa `accruedDays`. Se mantiene por compatibilidad de UI. */
   totalLawDays: number
   usedDays: number
+  /** Saldo no consumido del período inmediato anterior, arrastrado al vigente (máx. 2 períodos, ver calculateVacationPeriod). */
+  carriedOverDays: number
   availableDays: number
   yearsOfService: number
   monthsInPeriod: number
@@ -619,6 +643,7 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
         accruedDays: 0,
         totalLawDays: 0,
         usedDays: 0,
+        carriedOverDays: 0,
         availableDays: 0,
         yearsOfService: 0,
         monthsInPeriod: 0,
@@ -637,7 +662,35 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
       periodStartDate,
       periodEndDate,
       periodLabel: period,
+      previousPeriodExists,
+      previousPeriodStartDate,
+      previousPeriodEndDate,
+      previousPeriodAnnualDays,
     } = calculateVacationPeriod(emp.hire_date)
+
+    /** Suma días usados (vacaciones + permisos con cargo a vacaciones) entre un rango de solicitudes ya cargadas. */
+    function sumUsedDays(rows: { request_type: string; hours: number | null; metadata: any; status: string }[]): number {
+      return rows.reduce((acc, curr) => {
+        const isVacation =
+          curr.request_type === 'solicitud_vacaciones' ||
+          curr.metadata?.sub_type === 'solicitud_vacaciones'
+        const isCargoVacaciones =
+          (curr.request_type === 'permiso_laboral' || curr.metadata?.sub_type === 'permiso_laboral') &&
+          curr.metadata?.recovery_method === 'cargo_vacaciones'
+
+        if (isVacation) {
+          return acc + Number(curr.metadata?.days_count || (curr.hours ? curr.hours / 8 : 0))
+        }
+        if (isCargoVacaciones) {
+          const days =
+            curr.metadata?.leave_unit === 'horas'
+              ? (curr.hours || curr.metadata?.requested_hours || 0) / 8
+              : Number(curr.metadata?.requested_days || (curr.hours ? curr.hours / 8 : 1))
+          return acc + days
+        }
+        return acc
+      }, 0)
+    }
 
     // Días ya registrados o aprobados DENTRO DEL PERÍODO VIGENTE (vacaciones
     // y permisos con cargo a vacaciones) — sin este filtro de fecha,
@@ -652,31 +705,31 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
       .gte('date', periodStartDate)
       .lte('date', periodEndDate)
 
-    const usedDays = (requests || []).reduce((acc, curr) => {
-      const isVacation =
-        curr.request_type === 'solicitud_vacaciones' ||
-        curr.metadata?.sub_type === 'solicitud_vacaciones'
-      const isCargoVacaciones =
-        (curr.request_type === 'permiso_laboral' || curr.metadata?.sub_type === 'permiso_laboral') &&
-        curr.metadata?.recovery_method === 'cargo_vacaciones'
+    const usedDays = sumUsedDays(requests || [])
 
-      if (isVacation) {
-        return acc + Number(curr.metadata?.days_count || (curr.hours ? curr.hours / 8 : 0))
-      }
-      if (isCargoVacaciones) {
-        const days =
-          curr.metadata?.leave_unit === 'horas'
-            ? (curr.hours || curr.metadata?.requested_hours || 0) / 8
-            : Number(curr.metadata?.requested_days || (curr.hours ? curr.hours / 8 : 1))
-        return acc + days
-      }
-      return acc
-    }, 0)
+    // Arrastre del período INMEDIATO ANTERIOR no consumido: la ley ecuatoriana
+    // permite acumular vacaciones hasta por 2 períodos (no prescriben cada
+    // año automáticamente). Se calcula lo que le correspondía en ese período
+    // (según su antigüedad en ese momento) menos lo que ya tomó dentro de él.
+    let carriedOverDays = 0
+    if (previousPeriodExists) {
+      const { data: previousRequests } = await supabase
+        .from('shift_requests')
+        .select('request_type, hours, metadata, status')
+        .eq('employee_id', employeeId)
+        .in('request_type', ['solicitud_vacaciones', 'permiso_laboral', 'otro'])
+        .in('status', ['pendiente', 'aprobado'])
+        .gte('date', previousPeriodStartDate)
+        .lt('date', previousPeriodEndDate)
 
-    // El saldo disponible se calcula contra los días PROPORCIONALES acumulados
-    // a la fecha (no contra el total anual): un empleado con 6 meses tiene
-    // ~7.5 días, no 15.
-    const availableDays = Math.max(0, accruedToDate - usedDays)
+      const usedInPreviousPeriod = sumUsedDays(previousRequests || [])
+      carriedOverDays = Math.max(0, previousPeriodAnnualDays - usedInPreviousPeriod)
+    }
+
+    // El saldo disponible = proporcional acumulado en el período vigente +
+    // arrastre no consumido del período anterior, menos lo ya usado en el
+    // vigente (lo usado en el anterior ya se restó al calcular el arrastre).
+    const availableDays = Math.max(0, accruedToDate + carriedOverDays - usedDays)
 
     return {
       success: true,
@@ -684,6 +737,7 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
       accruedDays: accruedToDate,
       totalLawDays: accruedToDate,
       usedDays,
+      carriedOverDays,
       availableDays,
       yearsOfService: years,
       monthsInPeriod,
@@ -697,6 +751,7 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
       accruedDays: 0,
       totalLawDays: 0,
       usedDays: 0,
+      carriedOverDays: 0,
       availableDays: 0,
       yearsOfService: 0,
       monthsInPeriod: 0,

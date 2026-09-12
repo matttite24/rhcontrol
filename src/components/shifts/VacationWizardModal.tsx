@@ -100,6 +100,7 @@ export function VacationWizardModal({
   const [realBalance, setRealBalance] = useState<{
     totalLawDays: number
     usedDays: number
+    carriedOverDays: number
     availableDays: number
     period: string
   } | null>(null)
@@ -119,6 +120,7 @@ export function VacationWizardModal({
           setRealBalance({
             totalLawDays: res.totalLawDays,
             usedDays: res.usedDays,
+            carriedOverDays: res.carriedOverDays,
             availableDays: res.availableDays,
             period: res.period,
           })
@@ -163,6 +165,7 @@ export function VacationWizardModal({
 
   const totalLawDays = realBalance ? realBalance.totalLawDays : (seniority.hasCompletedOneYear ? Math.min(30, 15 + Math.max(0, seniority.years - 5)) : 0)
   const usedDays = realBalance ? realBalance.usedDays : 0
+  const carriedOverDays = realBalance?.carriedOverDays || 0
   const currentPeriod = realBalance?.period || seniority.period
 
   // Cálculo de días solicitados
@@ -478,9 +481,11 @@ export function VacationWizardModal({
                     <div className="text-sm font-bold font-mono text-emerald-700 dark:text-emerald-400">
                       {availableDays} días
                     </div>
-                    {usedDays > 0 && (
+                    {(usedDays > 0 || carriedOverDays > 0) && (
                       <span className="text-[10px] text-muted-foreground block">
-                        (Ley: {totalLawDays} • Ya tomados: {usedDays})
+                        (Período vigente: {totalLawDays}
+                        {carriedOverDays > 0 && ` + Arrastre año anterior: ${carriedOverDays}`}
+                        {usedDays > 0 && ` • Ya tomados: ${usedDays}`})
                       </span>
                     )}
                   </div>
