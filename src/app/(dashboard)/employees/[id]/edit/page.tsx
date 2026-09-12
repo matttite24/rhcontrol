@@ -109,11 +109,6 @@ export default async function EditEmployeePage({
           </div>
         }
         description="Modificar datos del empleado"
-        breadcrumbs={[
-          { label: 'Empleados', href: '/employees' },
-          { label: employee.full_name, href: `/employees/${employee.id}` },
-          { label: 'Editar' },
-        ]}
         action={
           <div className="flex items-center gap-2">
             <Link

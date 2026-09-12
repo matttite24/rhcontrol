@@ -49,10 +49,6 @@ export default async function NewEmployeePage() {
       <PageHeader
         title="Nuevo Empleado"
         description="Registrar un nuevo empleado"
-        breadcrumbs={[
-          { label: 'Empleados', href: '/employees' },
-          { label: 'Nuevo Empleado' },
-        ]}
         action={
           <div className="flex items-center gap-2">
             <Link

@@ -27,7 +27,6 @@ export default function EmployeesLoading() {
       <PageHeader
         title="Directorio de Empleados"
         description="Perfil, cargo y estado laboral de cada empleado"
-        breadcrumbs={[{ label: 'Empleados' }]}
         showExport
         action={
           <button type="button" disabled className={cn(buttonVariants({ size: 'sm' }), 'gap-2 font-medium opacity-70')}>

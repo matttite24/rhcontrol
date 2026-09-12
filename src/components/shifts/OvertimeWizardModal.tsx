@@ -34,7 +34,7 @@ import {
   Info,
 } from 'lucide-react'
 import { printOvertimeDocument } from '@/lib/shifts/print-overtime'
-import { createOvertimeRequestAction } from '@/lib/shifts/actions'
+import { createOvertimeRequestAction, updateOvertimeRequestAction } from '@/lib/shifts/actions'
 import { getInitials, formatLongDate } from '@/lib/shifts/format'
 import { parseTimeToMinutes, intervalsOverlap } from '@/lib/shifts/time'
 import { cn } from '@/lib/utils'
@@ -60,6 +60,14 @@ interface OvertimeWizardModalProps {
   // este wizard publica su propio handleRequestClose hacia el padre, que lo
   // usa como onOpenChange del Dialog mientras este wizard está activo.
   onRegisterRequestClose?: (fn: () => void) => void
+  /**
+   * Presente solo cuando se abre en modo edición (desde la lista de
+   * Novedades, botón de lápiz en filas 'pendiente'): precarga el formulario
+   * con esta solicitud y guarda con updateOvertimeRequestAction en vez de
+   * crear una nueva. Solo se permite editar solicitudes en status='pendiente'
+   * — la lista ya filtra eso antes de abrir el wizard.
+   */
+  editRequest?: ShiftRequest
 }
 
 const DAYS_OF_WEEK_MAP: Record<number, DayOfWeek> = {
@@ -111,26 +119,31 @@ export function OvertimeWizardModal({
   onOpenChange,
   onSuccess,
   onRegisterRequestClose,
+  editRequest,
 }: OvertimeWizardModalProps) {
   const router = useRouter()
   const supabase = createClient()
+  const isEditMode = Boolean(editRequest)
 
   // Pasos: 1 = Empleado, 2 = Fecha y Horas, 3 = Motivo & Confirmación, 4 = Imprimir / Éxito
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+  // En modo edición se arranca directo en el paso 2: el empleado ya viene fijo.
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(isEditMode ? 2 : 1)
   const [loading, setLoading] = useState(false)
   const [showConfirmClose, setShowConfirmClose] = useState(false)
 
-  // Datos del Formulario
-  const [selectedEmpId, setSelectedEmpId] = useState<string>('')
+  // Datos del Formulario — si viene editRequest, se precargan sus valores.
+  const [selectedEmpId, setSelectedEmpId] = useState<string>(editRequest?.employee_id || '')
   const [searchQuery, setSearchQuery] = useState('')
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0])
-  const [startTime, setStartTime] = useState('18:00')
-  const [endTime, setEndTime] = useState('20:00')
-  const [reason, setReason] = useState('')
-  const [isHoliday, setIsHoliday] = useState(false)
-  const [holidayTouched, setHolidayTouched] = useState(false)
-  const [overtimeType, setOvertimeType] = useState<'suplementaria_50' | 'extraordinaria_100'>('suplementaria_50')
-  const [overtimeTypeTouched, setOvertimeTypeTouched] = useState(false)
+  const [date, setDate] = useState<string>(editRequest?.date || new Date().toISOString().split('T')[0])
+  const [startTime, setStartTime] = useState(editRequest?.start_time || '18:00')
+  const [endTime, setEndTime] = useState(editRequest?.end_time || '20:00')
+  const [reason, setReason] = useState(editRequest?.reason || '')
+  const [isHoliday, setIsHoliday] = useState(Boolean(editRequest?.metadata?.is_holiday))
+  const [holidayTouched, setHolidayTouched] = useState(isEditMode)
+  const [overtimeType, setOvertimeType] = useState<'suplementaria_50' | 'extraordinaria_100'>(
+    (editRequest?.metadata?.overtime_type as 'suplementaria_50' | 'extraordinaria_100') || 'suplementaria_50'
+  )
+  const [overtimeTypeTouched, setOvertimeTypeTouched] = useState(isEditMode)
   const [createdRequest, setCreatedRequest] = useState<ShiftRequest | null>(null)
 
   // Modo "Repetir" (solicitud en lote): en vez de una única fecha, se generan
@@ -368,6 +381,11 @@ export function OvertimeWizardModal({
       return
     }
 
+    if (isEditMode) {
+      await handleUpdateRequest()
+      return
+    }
+
     if (isBatchMode) {
       await handleCreateBatchRequests()
       return
@@ -401,6 +419,40 @@ export function OvertimeWizardModal({
     } catch (err: any) {
       console.error(err)
       toast.error(err.message || 'Error al generar la solicitud.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleUpdateRequest() {
+    if (!editRequest) return
+    setLoading(true)
+    try {
+      const result = await updateOvertimeRequestAction({
+        requestId: editRequest.id,
+        employeeId: selectedEmpId,
+        date,
+        startTime,
+        endTime,
+        hours: calculatedHours,
+        reason,
+        overtimeType,
+        isHoliday,
+        isWorkday: activeDaySchedule ? activeDaySchedule.is_workday : null,
+      })
+
+      if (!result.success || !result.data) {
+        toast.error(result.error || 'Error al guardar los cambios.')
+        return
+      }
+
+      toast.success('Solicitud de horas extras actualizada con éxito.')
+      if (onSuccess) onSuccess()
+      onOpenChange(false)
+      router.refresh()
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || 'Error al guardar los cambios.')
     } finally {
       setLoading(false)
     }
@@ -492,7 +544,17 @@ export function OvertimeWizardModal({
     <>
       {/* El <DialogContent> único (clase incluida) vive en el launcher
           (NewShiftRequestButton) para no remontar el Portal/Overlay al
-          cambiar de vista — este componente solo aporta su contenido. */}
+          cambiar de vista — este componente solo aporta su contenido.
+          Se difumina (blur + escala leve, solo CSS/GPU) mientras el
+          sub-diálogo de "¿Descartar cambios?" está abierto encima, para
+          separar visualmente el contenido en segundo plano del que pide
+          confirmación — ver showConfirmClose más abajo. */}
+      <div
+        className={cn(
+          'flex flex-col flex-1 min-h-0 transition-[filter] duration-200 ease-out motion-reduce:transition-none',
+          showConfirmClose && 'blur-[6px] pointer-events-none'
+        )}
+      >
           {/* Cabecera del Wizard */}
           <DialogHeader className="p-5 pb-4 border-b bg-muted/20 shrink-0">
             <div className="flex items-center justify-between">
@@ -502,10 +564,12 @@ export function OvertimeWizardModal({
                 </div>
                 <div>
                   <DialogTitle className="text-base font-bold text-foreground">
-                    Solicitud de Horas Extras
+                    {isEditMode ? 'Editar Solicitud de Horas Extras' : 'Solicitud de Horas Extras'}
                   </DialogTitle>
                   <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                    Asistente paso a paso para autorización y registro legal
+                    {isEditMode
+                      ? 'Modifica los datos mientras la solicitud siga pendiente de aprobación'
+                      : 'Asistente paso a paso para autorización y registro legal'}
                   </DialogDescription>
                 </div>
               </div>
@@ -653,25 +717,29 @@ export function OvertimeWizardModal({
 
                 {/* Toggle "Repetir": genera una solicitud independiente por cada
                     ocurrencia futura del día de semana elegido, en vez de una
-                    sola fecha — ej. "Sábado" x 3 = próximos 3 sábados. */}
-                <label
-                  htmlFor="batch_mode"
-                  className="flex items-center gap-2.5 p-3 rounded-xl border bg-muted/10 cursor-pointer select-none"
-                >
-                  <input
-                    id="batch_mode"
-                    type="checkbox"
-                    checked={isBatchMode}
-                    onChange={(e) => setIsBatchMode(e.target.checked)}
-                    className="h-4 w-4 rounded border-input cursor-pointer accent-primary"
-                  />
-                  <div className="text-xs">
-                    <span className="font-medium text-foreground">Repetir en varias fechas</span>
-                    <p className="text-[11px] text-muted-foreground">
-                      Genera una solicitud independiente por cada semana, para el mismo día y horario.
-                    </p>
-                  </div>
-                </label>
+                    sola fecha — ej. "Sábado" x 3 = próximos 3 sábados. No
+                    aplica en edición: se está editando una única solicitud ya
+                    existente, no generando un lote nuevo. */}
+                {!isEditMode && (
+                  <label
+                    htmlFor="batch_mode"
+                    className="flex items-center gap-2.5 p-3 rounded-xl border bg-muted/10 cursor-pointer select-none"
+                  >
+                    <input
+                      id="batch_mode"
+                      type="checkbox"
+                      checked={isBatchMode}
+                      onChange={(e) => setIsBatchMode(e.target.checked)}
+                      className="h-4 w-4 rounded border-input cursor-pointer accent-primary"
+                    />
+                    <div className="text-xs">
+                      <span className="font-medium text-foreground">Repetir en varias fechas</span>
+                      <p className="text-[11px] text-muted-foreground">
+                        Genera una solicitud independiente por cada semana, para el mismo día y horario.
+                      </p>
+                    </div>
+                  </label>
+                )}
 
                 {isBatchMode ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
@@ -1025,7 +1093,7 @@ export function OvertimeWizardModal({
           <div className="p-4 border-t bg-muted/10 flex items-center justify-between gap-3 shrink-0">
             {/* Botón Izquierdo: Anterior o Cancelar */}
             <div>
-              {step > 1 && step < 4 ? (
+              {step > 1 && step < 4 && !(isEditMode && step === 2) ? (
                 <Button
                   type="button"
                   variant="outline"
@@ -1096,12 +1164,12 @@ export function OvertimeWizardModal({
                   {loading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      {isBatchMode ? `Generando ${batchProgress}/${batchDates.length}...` : 'Generando...'}
+                      {isEditMode ? 'Guardando...' : isBatchMode ? `Generando ${batchProgress}/${batchDates.length}...` : 'Generando...'}
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="h-4 w-4" />
-                      {isBatchMode ? `Generar ${batchDates.length} Solicitudes` : 'Generar Solicitud'}
+                      {isEditMode ? 'Guardar Cambios' : isBatchMode ? `Generar ${batchDates.length} Solicitudes` : 'Generar Solicitud'}
                     </>
                   )}
                 </Button>
@@ -1120,6 +1188,7 @@ export function OvertimeWizardModal({
               )}
             </div>
           </div>
+      </div>
 
       {/* Modal de Confirmación para Evitar Cierre Accidental (sub-modal independiente, mantiene su propio Dialog) */}
       <Dialog open={showConfirmClose} onOpenChange={setShowConfirmClose}>

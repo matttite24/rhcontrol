@@ -18,7 +18,6 @@ export default function PayrollLoading() {
       <PageHeader
         title="Generar Rol"
         description="Cálculo y consolidación general de haberes, horas extras y deducciones"
-        breadcrumbs={[{ label: 'Nómina' }, { label: 'Generar Reporte' }]}
         action={
           <button
             type="button"

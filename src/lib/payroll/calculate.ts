@@ -168,6 +168,29 @@ export function calculatePayroll({
     }
   }
 
+  // Agrupar por empleado UNA sola vez (O(registros)) en vez de un .filter()
+  // por empleado dentro del map de abajo (O(empleados × registros)) — con
+  // decenas de empleados y cientos de turnos/incidencias/deducciones por
+  // corte, esto era el cuello de botella real de "Generar Rol".
+  function groupByEmployee<T extends { employee_id: string }>(rows: T[]): Map<string, T[]> {
+    const map = new Map<string, T[]>()
+    for (const row of rows) {
+      const list = map.get(row.employee_id)
+      if (list) list.push(row)
+      else map.set(row.employee_id, [row])
+    }
+    return map
+  }
+
+  const shiftsByEmployee = groupByEmployee(rawShifts)
+  const incidentsByEmployee = groupByEmployee(rawIncidents)
+  const deductionsByEmployee = groupByEmployee(rawDeductions.filter((d) => !d.is_recurring))
+  const recurringMealRuleByEmployee = new Map(
+    rawRecurringRules
+      .filter((d) => d.deduction_type === 'alimentacion')
+      .map((d) => [d.employee_id, d])
+  )
+
   return rawEmployees.map((emp) => {
     // a. Salario Base y Bonificaciones
     const salaryItems = (emp.salaries || []).map((s) => ({
@@ -186,7 +209,7 @@ export function calculatePayroll({
     // b. Horas Extras aprobadas calculadas. Cada solicitud lleva su propio
     // recargo (metadata.overtime_type): 'suplementaria_50' = 1.5x la tarifa
     // hora base, 'extraordinaria_100' = 2.0x.
-    const empShifts = rawShifts.filter((s) => s.employee_id === emp.id)
+    const empShifts = shiftsByEmployee.get(emp.id) || []
     const approvedOvertimeShifts = empShifts.filter(
       (s) => s.request_type === 'horas_extras' && s.status === 'aprobado'
     )
@@ -242,15 +265,13 @@ export function calculatePayroll({
 
     // g (adelantado). Incidencias del empleado — se necesitan antes para
     // calcular días trabajados (incapacidad aprobada resta días del corte)
-    const empIncidents = rawIncidents.filter((inc) => inc.employee_id === emp.id)
+    const empIncidents = incidentsByEmployee.get(emp.id) || []
 
     // e. Descuentos económicos del empleado en el corte. Se excluyen los
     // registros que YA son la regla recurrente activa (se calculan aparte
     // más abajo) para no contarlos dos veces si su `date` original cae
     // dentro del rango del corte actual.
-    const empDeductions = rawDeductions.filter(
-      (d) => d.employee_id === emp.id && !d.is_recurring
-    )
+    const empDeductions = deductionsByEmployee.get(emp.id) || []
     const cashShortages = empDeductions
       .filter((d) => d.deduction_type === 'faltante_caja')
       .reduce((sum, d) => sum + Number(d.amount || 0), 0)
@@ -270,9 +291,7 @@ export function calculatePayroll({
     // e.1 Regla recurrente activa de Alimentación/Vivienda: se aplica en
     // cada corte mientras esté activa. Modalidad 'fijo' = mismo valor cada
     // mes; 'por_dias' = valor diario × días efectivamente trabajados.
-    const empRecurringRule = rawRecurringRules.find(
-      (d) => d.employee_id === emp.id && d.deduction_type === 'alimentacion'
-    )
+    const empRecurringRule = recurringMealRuleByEmployee.get(emp.id) || null
     let mealDeductions = 0
     let recurringDeductionDetail: {
       title: string

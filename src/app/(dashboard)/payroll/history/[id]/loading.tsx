@@ -24,7 +24,6 @@ export default function PayrollHistoryDetailLoading() {
       <PageHeader
         title="Reporte de Nómina"
         description="Cargando el detalle del corte guardado…"
-        breadcrumbs={[{ label: 'Nómina' }, { label: 'Historial' }, { label: 'Reporte' }]}
         action={
           <span
             className={cn(

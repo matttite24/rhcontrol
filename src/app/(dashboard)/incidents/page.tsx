@@ -165,9 +165,6 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
       <PageHeader
         title="Incidencias"
         description="Registros, solicitudes y documentación del personal"
-        breadcrumbs={[
-          { label: 'Incidencias' },
-        ]}
         showExport
         action={
           <NewIncidentButton

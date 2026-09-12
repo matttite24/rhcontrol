@@ -276,6 +276,12 @@ export function InventoryDeductionWizardModal({
 
   return (
     <>
+      <div
+        className={cn(
+          'flex flex-col flex-1 min-h-0 transition-[filter] duration-200 ease-out motion-reduce:transition-none',
+          showConfirmClose && 'blur-[6px] pointer-events-none'
+        )}
+      >
       {/* El <DialogContent> único vive en el launcher. Ver OvertimeWizardModal (Turnos). */}
           {/* Header */}
           <DialogHeader className="p-5 pb-4 bg-amber-500/10 border-b border-amber-500/20 text-left shrink-0 pr-12">
@@ -686,6 +692,8 @@ export function InventoryDeductionWizardModal({
               </>
             )}
           </div>
+
+      </div>
 
       {/* Diálogo de Confirmación para Evitar Cierre Accidental (sub-modal independiente, mantiene su propio Dialog) */}
       <Dialog open={showConfirmClose} onOpenChange={setShowConfirmClose}>

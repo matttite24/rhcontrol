@@ -13,8 +13,7 @@ export default function PayrollHistoryLoading() {
       <PageHeader
         title="Historial"
         description="Registro y archivo histórico de cortes y liquidaciones"
-        breadcrumbs={[{ label: 'Nómina' }, { label: 'Historial' }]}
-      />
+        />
 
       <SubHeader
         search={{ name: 'q', placeholder: 'Buscar reporte por título o departamento...' }}

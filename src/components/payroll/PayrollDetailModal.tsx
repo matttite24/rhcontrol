@@ -156,6 +156,15 @@ interface PayrollDetailModalProps {
    */
   payrollReportId?: string
   organizationId?: string
+  /**
+   * true si YA existe una fila en payroll_reports para este cálculo (sea
+   * 'borrador' o 'cerrado') — distingue el mensaje de solo lectura de
+   * Novedades entre "este rol ya se generó/cerró" (hasSavedReport=true) y
+   * "todavía no se ha guardado ningún borrador" (hasSavedReport=false, ej.
+   * en /payroll antes de pulsar "Guardar Borrador"), que antes mostraban el
+   * mismo texto engañoso de "ya fue generado".
+   */
+  hasSavedReport?: boolean
 }
 
 function getInitials(name: string) {
@@ -176,6 +185,7 @@ export function PayrollDetailModal({
   onOpenChange,
   payrollReportId,
   organizationId,
+  hasSavedReport = false,
 }: PayrollDetailModalProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'role' | 'novedades' | 'incidencias'>('role')
@@ -433,21 +443,23 @@ export function PayrollDetailModal({
                 </div>
               </div>
 
-              {/* Desglose de 2 Columnas: Ingresos vs Egresos */}
+              {/* Desglose de 2 Columnas: Ingresos vs Egresos — filas separadas
+                  solo por espaciado (sin divisor por línea), la jerarquía la
+                  da el color/peso de cada rubro, no una regla horizontal. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Columna Ingresos */}
-                <div className="rounded-xl border bg-card p-4 space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 border-b pb-2">
+                <div className="rounded-xl border bg-card p-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-3">
                     <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
                     Rubros de Ingreso
                   </h4>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between items-center py-1 border-b border-border/40">
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Sueldo Base</span>
                       <span className="font-mono font-medium">${item.baseSalary.toFixed(2)}</span>
                     </div>
                     {item.bonuses > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b border-border/40">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Bonificaciones</span>
                         <span className="font-mono font-medium">${item.bonuses.toFixed(2)}</span>
                       </div>
@@ -468,7 +480,7 @@ export function PayrollDetailModal({
                       return (
                         <>
                           {supplementary.length > 0 && (
-                            <div className="flex justify-between items-center py-1 border-b border-border/40">
+                            <div className="flex justify-between items-center">
                               <span className="text-muted-foreground">
                                 Horas Extras 50% ({sumHours(supplementary)} hrs)
                               </span>
@@ -476,7 +488,7 @@ export function PayrollDetailModal({
                             </div>
                           )}
                           {extraordinary.length > 0 && (
-                            <div className="flex justify-between items-center py-1 border-b border-border/40">
+                            <div className="flex justify-between items-center">
                               <span className="text-muted-foreground">
                                 Horas Extras 100% ({sumHours(extraordinary)} hrs)
                               </span>
@@ -491,54 +503,59 @@ export function PayrollDetailModal({
                         Gerente Propietario autoafiliado (sin relación de
                         dependencia, no le corresponden por Código del Trabajo) */}
                     {item.isOwnerManager ? (
-                      <div className="py-1.5 px-1.5 text-[11px] text-muted-foreground italic">
+                      <p className="text-[11px] text-muted-foreground italic pt-1">
                         No aplica Décimos ni Fondos de Reserva: autoafiliación IESS sin relación de dependencia.
-                      </div>
+                      </p>
                     ) : (
                       !item.accumulateDecimals && (
-                        <>
+                        <div className="space-y-1.5 pt-1">
                           {item.decimoTercero > 0 && (
-                            <div className="flex justify-between items-center py-1 border-b border-border/40 bg-emerald-500/5 px-1.5 rounded">
+                            <div className="flex justify-between items-center bg-emerald-500/5 px-2 py-1 rounded-md">
                               <span className="text-emerald-700 dark:text-emerald-400 font-medium">13er Sueldo (Mensualizado)</span>
                               <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">+${item.decimoTercero.toFixed(2)}</span>
                             </div>
                           )}
                           {item.decimoCuarto > 0 && (
-                            <div className="flex justify-between items-center py-1 border-b border-border/40 bg-emerald-500/5 px-1.5 rounded">
+                            <div className="flex justify-between items-center bg-emerald-500/5 px-2 py-1 rounded-md">
                               <span className="text-emerald-700 dark:text-emerald-400 font-medium">14to Sueldo (Mensualizado)</span>
                               <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">+${item.decimoCuarto.toFixed(2)}</span>
                             </div>
                           )}
                           {item.fondosReserva > 0 && (
-                            <div className="flex justify-between items-center py-1 border-b border-border/40 bg-emerald-500/5 px-1.5 rounded">
+                            <div className="flex justify-between items-center bg-emerald-500/5 px-2 py-1 rounded-md">
                               <span className="text-emerald-700 dark:text-emerald-400 font-medium">Fondos de Reserva (8.33%)</span>
                               <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">+${item.fondosReserva.toFixed(2)}</span>
                             </div>
                           )}
-                        </>
+                        </div>
                       )
                     )}
 
                     {item.details.salaryItems
                       .filter((s) => s.type !== 'Sueldo')
                       .map((sal, idx) => (
-                        <div key={idx} className="flex justify-between items-center py-1 border-b border-border/40">
+                        <div key={idx} className="flex justify-between items-center">
                           <span className="text-muted-foreground">{sal.name}</span>
                           <span className="font-mono font-medium">${sal.amount.toFixed(2)}</span>
                         </div>
                       ))}
+
+                    <div className="flex justify-between items-center pt-2 mt-1 border-t border-border/50">
+                      <span className="text-foreground font-semibold">Total Ingresos</span>
+                      <span className="font-mono font-bold text-foreground">${item.totalIncome.toFixed(2)}</span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Columna Deducciones y Descuentos */}
-                <div className="rounded-xl border bg-card p-4 space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 border-b pb-2">
+                <div className="rounded-xl border bg-card p-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 mb-3">
                     <TrendingDown className="h-3.5 w-3.5 text-rose-500" />
                     Descuentos del Período
                   </h4>
-                  <div className="space-y-2 text-xs">
+                  <div className="space-y-1.5 text-xs">
                     {item.iessPersonal > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b border-border/40">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">
                           {item.isOwnerManager
                             ? `Aporte IESS Autoafiliación (${((item.iessRate ?? 0.0945) * 100).toFixed(2)}%)`
@@ -548,53 +565,58 @@ export function PayrollDetailModal({
                       </div>
                     )}
                     {item.cashShortages > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b border-border/40">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Faltante de Caja</span>
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.cashShortages.toFixed(2)}</span>
                       </div>
                     )}
                     {item.inventoryDeductions > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b border-border/40">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Inventario / Mermas</span>
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.inventoryDeductions.toFixed(2)}</span>
                       </div>
                     )}
                     {item.fines > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b border-border/40">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Multas</span>
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.fines.toFixed(2)}</span>
                       </div>
                     )}
                     {item.loans > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b border-border/40">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Préstamos / Anticipos</span>
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.loans.toFixed(2)}</span>
                       </div>
                     )}
                     {item.mealDeductions > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b border-border/40">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Alimentación</span>
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.mealDeductions.toFixed(2)}</span>
                       </div>
                     )}
                     {item.otherDeductions > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b border-border/40">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Otras Deducciones</span>
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.otherDeductions.toFixed(2)}</span>
                       </div>
                     )}
                     {item.biweeklyAdvanceDeducted > 0 && (
-                      <div className="flex justify-between items-center py-1 border-b border-border/40">
+                      <div className="flex justify-between items-center">
                         <span className="text-muted-foreground" title="Anticipo pagado a mitad de mes, descontado aquí para no duplicarlo">
                           Anticipo Quincenal
                         </span>
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.biweeklyAdvanceDeducted.toFixed(2)}</span>
                       </div>
                     )}
-                    {item.details.deductionItems.length === 0 && item.iessPersonal === 0 && (
-                      <p className="text-xs text-muted-foreground italic py-2">
+                    {item.details.deductionItems.length === 0 && item.iessPersonal === 0 ? (
+                      <p className="text-xs text-muted-foreground italic">
                         Sin deducciones registradas en este período.
                       </p>
+                    ) : (
+                      <div className="flex justify-between items-center pt-2 mt-1 border-t border-border/50">
+                        <span className="text-foreground font-semibold">Total Deducciones</span>
+                        <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-${item.totalDeductions.toFixed(2)}</span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -624,7 +646,9 @@ export function PayrollDetailModal({
                 <p className="text-amber-800 dark:text-amber-300">
                   {canEditAdjustments
                     ? 'Ajusta aquí si el empleado no cumplió todas las horas extra autorizadas (ej. según el biométrico). Esto NO modifica la solicitud original, solo afecta el cálculo de este rol.'
-                    : 'Este rol ya fue generado: los ajustes aquí mostrados quedaron fijos y no pueden editarse.'}
+                    : hasSavedReport
+                    ? 'Este rol ya fue generado: los ajustes aquí mostrados quedaron fijos y no pueden editarse.'
+                    : 'Este cálculo aún no se ha guardado. Pulsa "Guardar Borrador" para poder ajustar horas efectivas antes de generar el rol definitivo.'}
                 </p>
               </div>
 

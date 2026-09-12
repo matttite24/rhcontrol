@@ -143,9 +143,6 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
       <PageHeader
         title="Descuentos"
         description="Registro y auditoría de descuentos de caja, inventarios, multas y consumos"
-        breadcrumbs={[
-          { label: 'Descuentos & Control Económico' },
-        ]}
         showExport
         action={
           <NewDeductionButton

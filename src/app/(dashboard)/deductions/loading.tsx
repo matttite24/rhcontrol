@@ -28,7 +28,6 @@ export default function DeductionsLoading() {
       <PageHeader
         title="Descuentos"
         description="Registro y auditoría de descuentos de caja, inventarios, multas y consumos"
-        breadcrumbs={[{ label: 'Descuentos & Control Económico' }]}
         showExport
         action={
           <button type="button" disabled className={cn(buttonVariants({ size: 'sm' }), 'gap-2 font-medium opacity-70')}>

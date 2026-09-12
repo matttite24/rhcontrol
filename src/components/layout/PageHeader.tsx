@@ -15,7 +15,6 @@ export interface PageHeaderProps {
   description?: React.ReactNode
   action?: React.ReactNode
   children?: React.ReactNode
-  breadcrumbs?: any
   /** Muestra el botón "Exportar" con opciones (deshabilitadas hasta implementar la función real). */
   showExport?: boolean
 }

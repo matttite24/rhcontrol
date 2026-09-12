@@ -107,10 +107,6 @@ export default async function SettlementsPage({ searchParams }: SettlementsPageP
       <PageHeader
         title="Liquidaciones"
         description="Cálculo de actas de finiquito, indemnizaciones de ley y registro de salida"
-        breadcrumbs={[
-          { label: 'Empleados', href: '/employees' },
-          { label: 'Liquidaciones (Bajas)' },
-        ]}
         action={
           <NewSettlementButton
             organizationId={currentOrg.id}

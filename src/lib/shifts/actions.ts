@@ -597,7 +597,153 @@ export async function createVacationRequestAction(params: CreateVacationRequestP
   }
 }
 
-export async function getEmployeeVacationBalanceAction(employeeId: string): Promise<{
+export interface UpdateVacationRequestParams {
+  requestId: string
+  organizationId: string
+  employeeId: string
+  reason: string
+  startDate: string
+  endDate: string
+  daysCount: number
+  metadata: VacationRequestMetadata
+}
+
+/**
+ * Edita una solicitud de vacaciones EN BORRADOR (status='pendiente'). Igual
+ * criterio que el resto de acciones de edición de novedades: solo mientras
+ * nadie la haya resuelto. Vuelve a validar el saldo disponible contra el
+ * nuevo rango de fechas, excluyendo esta misma solicitud del cálculo de días
+ * ya usados (ver excludeRequestId en getEmployeeVacationBalanceAction) — sin
+ * eso, la solicitud contaría contra su propio saldo y bloquearía ediciones
+ * válidas (ej. solo acortar el rango).
+ */
+export async function updateVacationRequestAction(params: UpdateVacationRequestParams): Promise<{
+  success: boolean
+  data?: ShiftRequest
+  error?: string
+}> {
+  try {
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { success: false, error: 'No autenticado. Inicia sesión nuevamente.' }
+    }
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('shift_requests')
+      .select('id, status, metadata, title')
+      .eq('id', params.requestId)
+      .single()
+
+    if (fetchError || !existing) {
+      return { success: false, error: 'No se encontró la solicitud a editar.' }
+    }
+    if (existing.status !== 'pendiente') {
+      return { success: false, error: 'Solo se pueden editar solicitudes pendientes de aprobación.' }
+    }
+
+    // Re-validar el saldo disponible contra el rango editado.
+    const balance = await getEmployeeVacationBalanceAction(params.employeeId, params.requestId)
+    if (!balance.success) {
+      return { success: false, error: balance.error || 'No se pudo verificar el saldo de vacaciones.' }
+    }
+
+    const isAdvance = Boolean(params.metadata?.is_advance)
+    const availableLimit = isAdvance
+      ? Math.max(0, balance.annualLawDays - balance.usedDays)
+      : balance.availableDays
+
+    if (params.daysCount > availableLimit) {
+      return {
+        success: false,
+        error: isAdvance
+          ? `Límite excedido: el adelanto permite hasta ${availableLimit} día(s) del año completo (Total ley: ${balance.annualLawDays}, ya tomados: ${balance.usedDays}).`
+          : `Límite excedido: Solo dispone de ${availableLimit} día(s) de vacaciones del último período cumplido (tomados/en trámite: ${balance.usedDays}).`,
+      }
+    }
+
+    const prevMetadata = (existing.metadata || {}) as Record<string, any>
+    // Conservar el código de documento y prefijo del título ([VAC-0001]) ya
+    // asignado — no se genera uno nuevo al editar.
+    const docCodePrefix = existing.title?.match(/^\[[A-Z]{3}-\d+\]/)?.[0] || ''
+    const newTitle = `${docCodePrefix ? `${docCodePrefix} ` : ''}Solicitud de Vacaciones - ${params.daysCount} días (${params.metadata.settlement_period || prevMetadata.settlement_period || ''})`
+
+    const { data, error } = await supabase
+      .from('shift_requests')
+      .update({
+        employee_id: params.employeeId,
+        title: newTitle,
+        reason: params.reason.trim(),
+        date: params.startDate,
+        hours: params.daysCount * 8,
+        updated_at: new Date().toISOString(),
+        metadata: {
+          ...prevMetadata,
+          ...params.metadata,
+          start_date: params.startDate,
+          end_date: params.endDate,
+          days_count: params.daysCount,
+        },
+      })
+      .eq('id', params.requestId)
+      .select(
+        `
+        *,
+        employee:employees (
+          id,
+          full_name,
+          national_id,
+          department,
+          position,
+          avatar_url
+        )
+      `
+      )
+      .single()
+
+    if (error) {
+      console.error('Error actualizando solicitud_vacaciones en shift_requests:', error)
+      return { success: false, error: error.message }
+    }
+
+    // Sincronizar el incidente reflejado, si existe.
+    if (prevMetadata.incident_id || existing.id) {
+      await supabase
+        .from('incidents')
+        .update({
+          title: newTitle,
+          description: params.reason.trim(),
+          start_date: params.startDate,
+          end_date: params.endDate,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('metadata->>shift_request_id', params.requestId)
+    }
+
+    revalidatePath('/shifts/requests')
+    revalidatePath('/shifts/calendar')
+    revalidatePath('/incidents')
+    return { success: true, data: data as ShiftRequest }
+  } catch (err: any) {
+    console.error('Catch en updateVacationRequestAction:', err)
+    return { success: false, error: err?.message || 'Error inesperado al editar la solicitud de vacaciones' }
+  }
+}
+
+export async function getEmployeeVacationBalanceAction(
+  employeeId: string,
+  /**
+   * Id de una solicitud a excluir del cálculo de días usados — se pasa al
+   * editar una solicitud de vacaciones ya existente (ver
+   * updateVacationRequestAction), para que la solicitud no cuente contra su
+   * propio saldo disponible al re-validar el rango editado.
+   */
+  excludeRequestId?: string
+): Promise<{
   success: boolean
   /** Días anuales que le corresponden por ley según su antigüedad (15..30). */
   annualLawDays: number
@@ -670,8 +816,11 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
     const currentPeriodLabel = `Período ${periodStartDate} a ${periodEndDate}`
 
     /** Suma días usados (vacaciones + permisos con cargo a vacaciones) entre un rango de solicitudes ya cargadas. */
-    function sumUsedDays(rows: { request_type: string; hours: number | null; metadata: any; status: string }[]): number {
+    function sumUsedDays(rows: { id: string; request_type: string; hours: number | null; metadata: any; status: string }[]): number {
       return rows.reduce((acc, curr) => {
+        // Excluir la solicitud que se está editando — no debe contar contra
+        // su propio saldo al re-validar (ver excludeRequestId).
+        if (excludeRequestId && curr.id === excludeRequestId) return acc
         const isVacation =
           curr.request_type === 'solicitud_vacaciones' ||
           curr.metadata?.sub_type === 'solicitud_vacaciones'
@@ -699,7 +848,7 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
     // indefinidamente del saldo disponible actual.
     const { data: requests } = await supabase
       .from('shift_requests')
-      .select('request_type, hours, metadata, status')
+      .select('id, request_type, hours, metadata, status')
       .eq('employee_id', employeeId)
       .in('request_type', ['solicitud_vacaciones', 'permiso_laboral', 'otro'])
       .in('status', ['pendiente', 'aprobado'])
@@ -716,7 +865,7 @@ export async function getEmployeeVacationBalanceAction(employeeId: string): Prom
     if (previousPeriodExists) {
       const { data: previousRequests } = await supabase
         .from('shift_requests')
-        .select('request_type, hours, metadata, status')
+        .select('id, request_type, hours, metadata, status')
         .eq('employee_id', employeeId)
         .in('request_type', ['solicitud_vacaciones', 'permiso_laboral', 'otro'])
         .in('status', ['pendiente', 'aprobado'])
@@ -911,5 +1060,106 @@ export async function createOvertimeRequestAction(params: CreateOvertimeRequestP
   } catch (err: any) {
     console.error('Catch en createOvertimeRequestAction:', err)
     return { success: false, error: err?.message || 'Error inesperado al generar la solicitud de horas extras' }
+  }
+}
+
+export interface UpdateOvertimeRequestParams {
+  requestId: string
+  employeeId: string
+  date: string
+  startTime: string
+  endTime: string
+  hours: number
+  reason: string
+  overtimeType: 'suplementaria_50' | 'extraordinaria_100'
+  isHoliday: boolean
+  isWorkday: boolean | null
+}
+
+/**
+ * Edita una solicitud de horas extras EN BORRADOR (status='pendiente'). Solo
+ * se puede editar mientras nadie la haya aprobado/rechazado — igual criterio
+ * que el resto de acciones de modificación de novedades, para no reescribir
+ * documentación ya resuelta. Reemplaza el empleado también, por si se eligió
+ * mal al crear la solicitud.
+ */
+export async function updateOvertimeRequestAction(params: UpdateOvertimeRequestParams): Promise<{
+  success: boolean
+  data?: ShiftRequest
+  error?: string
+}> {
+  try {
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { success: false, error: 'No autenticado. Inicia sesión nuevamente.' }
+    }
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('shift_requests')
+      .select('id, status, metadata')
+      .eq('id', params.requestId)
+      .single()
+
+    if (fetchError || !existing) {
+      return { success: false, error: 'No se encontró la solicitud a editar.' }
+    }
+    if (existing.status !== 'pendiente') {
+      return { success: false, error: 'Solo se pueden editar solicitudes pendientes de aprobación.' }
+    }
+
+    const prevMetadata = (existing.metadata || {}) as Record<string, any>
+    const title = `[${prevMetadata.document_code || ''}] Horas Extras (${params.hours} hrs) - ${params.overtimeType === 'suplementaria_50' ? '50% Recargo' : '100% Extraordinaria'}`
+
+    const { data, error } = await supabase
+      .from('shift_requests')
+      .update({
+        employee_id: params.employeeId,
+        title,
+        reason: params.reason.trim(),
+        date: params.date,
+        start_time: params.startTime,
+        end_time: params.endTime,
+        hours: params.hours,
+        updated_at: new Date().toISOString(),
+        metadata: {
+          ...prevMetadata,
+          overtime_type: params.overtimeType,
+          overtime_rate: params.overtimeType === 'suplementaria_50' ? 1.5 : 2.0,
+          is_holiday: params.isHoliday,
+          is_workday: params.isWorkday,
+        },
+      })
+      .eq('id', params.requestId)
+      .select(
+        `
+        *,
+        employee:employees (
+          id,
+          full_name,
+          national_id,
+          department,
+          position,
+          avatar_url
+        )
+      `
+      )
+      .single()
+
+    if (error) {
+      console.error('Error actualizando horas_extras en shift_requests:', error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/shifts/requests')
+    revalidatePath('/shifts/calendar')
+    return { success: true, data: data as ShiftRequest }
+  } catch (err: any) {
+    console.error('Catch en updateOvertimeRequestAction:', err)
+    return { success: false, error: err?.message || 'Error inesperado al editar la solicitud de horas extras' }
   }
 }

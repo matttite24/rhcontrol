@@ -27,7 +27,6 @@ export default function IncidentsLoading() {
       <PageHeader
         title="Incidencias"
         description="Registros, solicitudes y documentación del personal"
-        breadcrumbs={[{ label: 'Incidencias' }]}
         showExport
         action={
           <button type="button" disabled className={cn(buttonVariants({ size: 'sm' }), 'gap-2 font-medium opacity-70')}>

@@ -1,13 +1,28 @@
-import { buttonVariants } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-import { FileCheck2, DollarSign, ShieldCheck, TrendingUp, Users, Cake, Bell, ChevronRight, ClipboardCheck, Plane, UserCheck, Award } from 'lucide-react'
-import Link from 'next/link'
+import {
+  ShieldCheck,
+  DollarSign,
+  TrendingUp,
+  Users,
+  ChevronRight,
+  ClipboardCheck,
+  Plane,
+  UserCheck,
+  Cake,
+  Award,
+  Bell,
+} from 'lucide-react'
 
 /**
- * Loading state para "/" (Inicio). El header y las tarjetas de cumplimiento
- * laboral son texto estático (no dependen de la base de datos), así que se
- * renderizan reales de inmediato; solo lo que depende de consultas
- * (contadores, cumpleaños, novedades recientes) queda como skeleton.
+ * Loading state para "/" (Inicio). Debe reflejar la MISMA estructura que
+ * page.tsx (hero sin header sticky, tarjetas como <Link> con número
+ * dominante) — un loading.tsx con un layout distinto al real es peor que no
+ * tener ninguno: el usuario ve literalmente un diseño distinto por unos
+ * segundos antes de que la page real lo reemplace, como si la app hubiera
+ * "revertido" a una versión anterior.
+ *
+ * El saludo depende de la hora y del nombre del usuario (ver page.tsx), así
+ * que aquí se muestra un saludo genérico sin nombre — es solo el placeholder
+ * mientras carga, no necesita ser idéntico letra por letra.
  */
 export default function DashboardLoading() {
   const today = new Date()
@@ -16,82 +31,45 @@ export default function DashboardLoading() {
   const currentMonthName = monthNames[today.getMonth()]
   const todayLabel = `${dayNames[today.getDay()]}, ${today.getDate()} de ${currentMonthName}`
 
+  const hour = today.getHours()
+  const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches'
+
   return (
     <div className="flex flex-col flex-1 min-h-screen">
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b bg-background/75 supports-[backdrop-filter]:backdrop-blur-md px-6 py-4">
-        <div className="min-w-0">
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-foreground truncate">
-            Inicio
-          </h1>
-          <p className="text-xs md:text-sm text-muted-foreground capitalize">
-            {todayLabel}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <Link
-            href="/employees/onboarding"
-            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'text-xs gap-1.5 active:scale-95 transition-transform')}
-          >
-            <FileCheck2 className="h-3.5 w-3.5 text-primary" />
-            Expedientes
-          </Link>
-          <Link
-            href="/payroll"
-            className={cn(buttonVariants({ size: 'sm' }), 'text-xs gap-1.5 active:scale-95 transition-transform')}
-          >
-            <DollarSign className="h-3.5 w-3.5" />
-            Generar Nómina
-          </Link>
-        </div>
-      </header>
-
       <div className="p-6 md:p-8 space-y-6 w-full">
-        {/* FILA 1: tarjetas de plazos — el texto es estático, solo el número final depende de datos */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="group p-4 rounded-xl border bg-card shadow-xs flex items-center gap-3.5">
-            <div className="p-3 rounded-xl bg-blue-500/10 text-blue-600 shrink-0">
-              <ShieldCheck className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Planilla IESS</p>
-              <p className="text-lg font-bold font-mono text-foreground leading-tight animate-pulse">Cargando...</p>
-              <p className="text-[11px] text-muted-foreground">Límite: 15 de {currentMonthName}</p>
-            </div>
-          </div>
+        {/* Hero: saludo + fecha — mismo bloque que page.tsx, sin el nombre
+            (depende de auth.getUser(), aún no resuelto en este punto) */}
+        <section className="pb-2 space-y-1.5">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">
+            {greeting}
+          </h1>
+          <p className="text-sm text-muted-foreground capitalize">{todayLabel}</p>
+        </section>
 
-          <div className="group p-4 rounded-xl border bg-card shadow-xs flex items-center gap-3.5">
-            <div className="p-3 rounded-xl bg-amber-500/10 text-amber-600 shrink-0">
-              <DollarSign className="h-6 w-6" />
+        {/* FILA 1: métricas del día — mismo grid/tarjeta que page.tsx, con el
+            número en pulso mientras no hay dato real */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {[
+            { label: 'Planilla IESS', hint: `Límite 15 de ${currentMonthName}`, icon: ShieldCheck },
+            { label: 'Quincena', hint: 'Anticipo acordado', icon: DollarSign },
+            { label: 'Cierre de nómina', hint: `Fin de ${currentMonthName}`, icon: TrendingUp },
+            { label: 'Empleados activos', hint: 'Total en nómina', icon: Users },
+          ].map(({ label, hint, icon: Icon }) => (
+            <div
+              key={label}
+              className="relative rounded-2xl border bg-card px-5 py-5 shadow-xs"
+            >
+              <ChevronRight className="absolute right-4 top-5 h-4 w-4 text-muted-foreground/30" />
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+                <span className="text-[13px] font-medium tracking-tight">{label}</span>
+              </div>
+              <div className="mt-3.5">
+                <div className="h-8 w-14 rounded bg-muted animate-pulse" />
+              </div>
+              <p className="mt-2 text-[12px] leading-tight text-muted-foreground/80">{hint}</p>
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Quincena</p>
-              <p className="text-lg font-bold font-mono text-foreground leading-tight animate-pulse">Cargando...</p>
-              <p className="text-[11px] text-muted-foreground">Anticipo acordado</p>
-            </div>
-          </div>
-
-          <div className="group p-4 rounded-xl border bg-card shadow-xs flex items-center gap-3.5">
-            <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-600 shrink-0">
-              <TrendingUp className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Cierre de nómina</p>
-              <p className="text-lg font-bold font-mono text-foreground leading-tight animate-pulse">Cargando...</p>
-              <p className="text-[11px] text-muted-foreground">Fin de {currentMonthName}</p>
-            </div>
-          </div>
-
-          <div className="group p-4 rounded-xl border bg-card shadow-xs flex items-center gap-3.5">
-            <div className="p-3 rounded-xl bg-primary/10 text-primary shrink-0">
-              <Users className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Empleados activos</p>
-              <p className="text-lg font-bold font-mono text-foreground leading-tight animate-pulse">···</p>
-              <p className="text-[11px] text-muted-foreground">Total en nómina</p>
-            </div>
-          </div>
+          ))}
         </div>
 
         {/* FILA 2: pendientes de aprobación + resumen de nómina — encabezados reales, contenido en skeleton */}
@@ -106,13 +84,10 @@ export default function DashboardLoading() {
                   Pendientes de Aprobación
                 </h3>
               </div>
-              <Link
-                href="/shifts/requests?status=pendiente"
-                className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
-              >
+              <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
                 Ver todo
                 <ChevronRight className="h-3.5 w-3.5" />
-              </Link>
+              </span>
             </div>
             <div className="space-y-1 animate-pulse">
               {[0, 1, 2].map((i) => (
@@ -137,13 +112,10 @@ export default function DashboardLoading() {
                   Último Corte de Nómina
                 </h3>
               </div>
-              <Link
-                href="/payroll/history"
-                className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
-              >
+              <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
                 Historial
                 <ChevronRight className="h-3.5 w-3.5" />
-              </Link>
+              </span>
             </div>
             <div className="animate-pulse space-y-3">
               <div className="h-8 w-32 bg-muted rounded" />
@@ -267,13 +239,10 @@ export default function DashboardLoading() {
                   Novedades Recientes
                 </h3>
               </div>
-              <Link
-                href="/incidents"
-                className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
-              >
+              <span className="text-xs text-muted-foreground flex items-center gap-1 font-medium">
                 Ver todo
                 <ChevronRight className="h-3.5 w-3.5" />
-              </Link>
+              </span>
             </div>
             <div className="space-y-1 animate-pulse">
               {[0, 1, 2, 3].map((i) => (
@@ -288,7 +257,6 @@ export default function DashboardLoading() {
             </div>
           </div>
         </div>
-
       </div>
     </div>
   )

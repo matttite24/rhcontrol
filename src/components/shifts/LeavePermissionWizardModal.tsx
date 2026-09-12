@@ -517,6 +517,12 @@ export function LeavePermissionWizardModal({
 
   return (
     <>
+      <div
+        className={cn(
+          'flex flex-col flex-1 min-h-0 transition-[filter] duration-200 ease-out motion-reduce:transition-none',
+          showConfirmClose && 'blur-[6px] pointer-events-none'
+        )}
+      >
       {/* El <DialogContent> único vive en el launcher. Ver OvertimeWizardModal. */}
           {/* Cabecera del Wizard */}
           <DialogHeader className="p-5 pb-4 border-b bg-muted/20 shrink-0">
@@ -1240,6 +1246,8 @@ export function LeavePermissionWizardModal({
               )}
             </div>
           </div>
+
+      </div>
 
       {/* Confirmación para evitar cierre accidental con datos cargados (sub-modal independiente, mantiene su propio Dialog) */}
       <Dialog open={showConfirmClose} onOpenChange={setShowConfirmClose}>

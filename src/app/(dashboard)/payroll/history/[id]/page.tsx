@@ -148,11 +148,6 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
             ? `Corte del ${report.start_date} al ${report.end_date} • En revisión, aún no generado`
             : `Corte del ${report.start_date} al ${report.end_date} • Guardado el ${new Date(report.created_at).toLocaleDateString('es-EC')}`
         }
-        breadcrumbs={[
-          { label: 'Nómina', href: '/payroll' },
-          { label: 'Historial', href: '/payroll/history' },
-          { label: report.title },
-        ]}
         action={
           <div className="flex items-center gap-2">
             <Link
@@ -231,6 +226,7 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
           endDate={report.end_date}
           payrollReportId={isDraft ? report.id : undefined}
           organizationId={isDraft ? currentOrg.id : undefined}
+          hasSavedReport
         />
       </div>
     </div>

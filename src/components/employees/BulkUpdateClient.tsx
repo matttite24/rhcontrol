@@ -156,10 +156,6 @@ export function BulkUpdateClient({
       <PageHeader
         title="Ajuste Masivo"
         description="Incrementos salariales generales para varios empleados a la vez"
-        breadcrumbs={[
-          { label: 'Empleados', href: '/employees' },
-          { label: 'Ajuste Masivo' },
-        ]}
         action={
           <div className="flex items-center gap-2">
             <Button

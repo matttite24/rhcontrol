@@ -84,10 +84,6 @@ export default async function PayrollHistoryPage({ searchParams }: PayrollHistor
       <PageHeader
         title="Historial"
         description="Registro y archivo histórico de cortes y liquidaciones"
-        breadcrumbs={[
-          { label: 'Nómina', href: '/payroll' },
-          { label: 'Historial de Reportes' },
-        ]}
         showExport
         action={
           <Link href="/payroll" className={cn(buttonVariants({ size: 'sm' }), "gap-2")}>

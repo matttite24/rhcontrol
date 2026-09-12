@@ -23,6 +23,16 @@ interface PayrollTableViewProps {
   /** Solo si el rol está en borrador: habilita la pestaña Novedades (editable) en el drawer de detalle. */
   payrollReportId?: string
   organizationId?: string
+  /** true si ya existe una fila en payroll_reports (borrador o cerrado) — ver PayrollDetailModal. */
+  hasSavedReport?: boolean
+  /**
+   * Selección de empleados a incluir al guardar el rol (ver
+   * PayrollWorkspace) — opcionales porque las vistas de solo lectura
+   * (ej. /payroll/history/[id]) usan esta misma tabla sin selección.
+   */
+  selectedIds?: Set<string>
+  onToggleOne?: (employeeId: string, checked: boolean) => void
+  onToggleAll?: (checked: boolean) => void
 }
 
 function getInitials(name: string) {
@@ -41,9 +51,29 @@ export function PayrollTableView({
   endDate,
   payrollReportId,
   organizationId,
+  hasSavedReport = false,
+  selectedIds,
+  onToggleOne,
+  onToggleAll,
 }: PayrollTableViewProps) {
   const [selectedEmployee, setSelectedEmployee] = useState<PayrollEmployeeCalculation | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  // Selección solo se muestra cuando el padre la controla (ver
+  // PayrollWorkspace) — en vistas de solo lectura (historial) no se pasan
+  // estas props y la columna de checkbox no se renderiza.
+  const selectionEnabled = Boolean(selectedIds && onToggleOne && onToggleAll)
+  const allSelected = selectionEnabled && calculations.length > 0 && calculations.every((c) => selectedIds!.has(c.employeeId))
+  const someSelected = selectionEnabled && !allSelected && calculations.some((c) => selectedIds!.has(c.employeeId))
+
+  // El estado "indeterminado" (algunos pero no todos seleccionados) no tiene
+  // atributo declarativo en HTML — solo se puede setear imperativamente vía
+  // ref sobre el elemento nativo.
+  const selectAllRef = React.useRef<HTMLInputElement>(null)
+  React.useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected
+    }
+  }, [someSelected])
 
   function handleOpenDetail(calc: PayrollEmployeeCalculation) {
     setSelectedEmployee(calc)
@@ -60,15 +90,27 @@ export function PayrollTableView({
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40 text-xs">
-              <TableHead className="w-[18%] pl-6 font-semibold">Empleado</TableHead>
-              <TableHead className="w-[10%] font-semibold">Sueldo Base</TableHead>
-              <TableHead className="w-[9%] font-semibold">Bonos/Ext.</TableHead>
-              <TableHead className="w-[10%] font-semibold">Décimos (Ley)</TableHead>
-              <TableHead className="w-[10%] font-semibold">Total Ing.</TableHead>
-              <TableHead className="w-[10%] font-semibold">Descuentos</TableHead>
-              <TableHead className="w-[11%] font-semibold">Neto Rol</TableHead>
-              <TableHead className="w-[15%] font-semibold">Documentos / Acciones</TableHead>
-              <TableHead className="w-[7%] pr-6 text-right font-semibold">Detalle</TableHead>
+              {selectionEnabled && (
+                <TableHead className="w-[3%] pl-6">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={(e) => onToggleAll!(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-input cursor-pointer accent-primary"
+                    aria-label="Seleccionar todos los empleados"
+                  />
+                </TableHead>
+              )}
+              <TableHead className={cn('font-semibold', selectionEnabled ? 'w-[23%]' : 'w-[24%] pl-6')}>Empleado</TableHead>
+              <TableHead className="w-[9%] font-semibold">Sueldo Base</TableHead>
+              <TableHead className="w-[8%] font-semibold">Bonos/Ext.</TableHead>
+              <TableHead className="w-[9%] font-semibold">Décimos (Ley)</TableHead>
+              <TableHead className="w-[9%] font-semibold">Total Ing.</TableHead>
+              <TableHead className="w-[9%] font-semibold">Descuentos</TableHead>
+              <TableHead className="w-[10%] font-semibold">Neto Rol</TableHead>
+              <TableHead className="w-[13%] font-semibold">Documentos / Acciones</TableHead>
+              <TableHead className="w-[6%] pr-6 text-right font-semibold">Detalle</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -79,10 +121,23 @@ export function PayrollTableView({
               const approvedCount = actions.filter((a) => a.status === 'aprobado').length
               const pendingCount = actions.filter((a) => a.status === 'pendiente').length
 
+              const isSelected = selectionEnabled && selectedIds!.has(calc.employeeId)
+
               return (
                 <TableRow key={calc.employeeId} className="hover:bg-muted/40 transition-colors text-xs">
+                  {selectionEnabled && (
+                    <TableCell className="pl-6 py-3.5">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => onToggleOne!(calc.employeeId, e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-input cursor-pointer accent-primary"
+                        aria-label={`Seleccionar a ${calc.fullName}`}
+                      />
+                    </TableCell>
+                  )}
                   {/* Empleado */}
-                  <TableCell className="pl-6 py-3.5">
+                  <TableCell className={cn('py-3.5', !selectionEnabled && 'pl-6')}>
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8 ring-1 ring-border shrink-0">
                         <AvatarImage src={calc.avatarUrl ?? undefined} alt={calc.fullName} />
@@ -91,10 +146,10 @@ export function PayrollTableView({
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex flex-col min-w-0">
-                        <span className="font-semibold text-foreground truncate max-w-[140px]" title={calc.fullName}>
+                        <span className="font-semibold text-foreground truncate max-w-[220px]" title={calc.fullName}>
                           {calc.fullName}
                         </span>
-                        <span className="text-[11px] font-mono text-muted-foreground truncate max-w-[140px]">
+                        <span className="text-[11px] font-mono text-muted-foreground truncate max-w-[220px]">
                           {calc.nationalId || calc.department || '—'}
                         </span>
                       </div>
@@ -162,16 +217,17 @@ export function PayrollTableView({
                     )}
                   </TableCell>
 
-                  {/* Acciones */}
+                  {/* Detalle */}
                   <TableCell className="pr-6 py-3.5 text-right">
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       onClick={() => handleOpenDetail(calc)}
-                      className="h-8 text-xs cursor-pointer gap-1 text-primary font-medium hover:text-primary hover:bg-primary/10"
+                      className="h-8 w-8 cursor-pointer text-primary hover:text-primary hover:bg-primary/10"
+                      title="Ver detalle"
+                      aria-label={`Ver detalle de ${calc.fullName}`}
                     >
                       <Eye className="h-3.5 w-3.5" />
-                      Ver detalles
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -189,6 +245,7 @@ export function PayrollTableView({
         onOpenChange={setModalOpen}
         payrollReportId={payrollReportId}
         organizationId={organizationId}
+        hasSavedReport={hasSavedReport}
       />
     </>
   )

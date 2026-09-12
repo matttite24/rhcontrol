@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Organization } from '@/types/employee'
 import { createOrganizationWithOwnerAction } from '@/lib/org/actions'
 import {
@@ -40,19 +39,29 @@ export function OrgSwitcher({
   currentOrg,
   organizations: initialOrgs,
 }: OrgSwitcherProps) {
-  const router = useRouter()
-
   const [organizations, setOrganizations] = useState<Organization[]>(initialOrgs)
   const [activeOrg, setActiveOrg] = useState<Organization | null>(currentOrg)
   const [openDialog, setOpenDialog] = useState(false)
   const [newOrgName, setNewOrgName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Evita doble clic mientras se procesa el cambio de empresa (la recarga
+  // completa de abajo tarda un instante en arrancar).
+  const [switching, setSwitching] = useState(false)
 
   function handleSelectOrg(org: Organization) {
+    if (org.id === activeOrg?.id || switching) return
+    setSwitching(true)
     document.cookie = `rh_current_org_id=${org.id}; path=/; max-age=31536000; SameSite=Lax`
     setActiveOrg(org)
-    router.refresh()
+    // router.refresh() solo revalida los Server Components de la ruta
+    // actual: no reejecuta el middleware ni reinicializa el estado de los
+    // Client Components que ya cargaron datos de la organización anterior
+    // (selects con useState inicial, cachés en memoria, etc.) — eso es lo
+    // que dejaba el cambio de empresa "en el aire" a veces. Una recarga dura
+    // de la página resincroniza todo (middleware, cookies, cada componente)
+    // desde cero contra la organización nueva, sin arriesgar estado residual.
+    window.location.href = '/'
   }
 
   async function handleCreateOrg(e: React.FormEvent) {
@@ -83,17 +92,23 @@ export function OrgSwitcher({
         <SidebarMenuItem>
           <DropdownMenu>
             <DropdownMenuTrigger
+              disabled={switching}
               render={
                 <SidebarMenuButton
                   size="lg"
-                  className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+                  disabled={switching}
+                  className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground disabled:opacity-70 disabled:cursor-wait"
                 >
                   <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <Building2 className="size-4" />
+                    {switching ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Building2 className="size-4" />
+                    )}
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-semibold">
-                      {activeOrg?.name ?? 'Seleccionar Empresa'}
+                      {switching ? 'Cambiando de empresa...' : (activeOrg?.name ?? 'Seleccionar Empresa')}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
                       Organización

@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { ShiftRequest, ShiftRequestStatus, Organization } from '@/types/employee'
+import { Employee, ShiftRequest, ShiftRequestStatus, Organization } from '@/types/employee'
 import {
   Table,
   TableHeader,
@@ -13,18 +15,42 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { SHIFT_REQUEST_TYPE_OPTIONS, SHIFT_REQUEST_STATUS_MAP } from '@/lib/shifts/constants'
 import { ShiftRequestDetailModal } from './ShiftRequestDetailModal'
-import { Clock, RefreshCw, FileText, Eye } from 'lucide-react'
+import { Clock, RefreshCw, FileText, Eye, Pencil, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getShiftRequestCode, INCIDENT_PREFIX_MAP } from '@/lib/incidents/sequence'
 import { getInitials } from '@/lib/shifts/format'
 
+// Solo Horas Extras y Vacaciones soportan edición por ahora — se cargan bajo
+// demanda para no inflar el bundle de /shifts/requests con componentes que
+// la mayoría de aperturas de la página no necesita.
+const wizardLoading = (
+  <div className="flex items-center justify-center p-12">
+    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+  </div>
+)
+const OvertimeWizardModal = dynamic(
+  () => import('./OvertimeWizardModal').then((m) => m.OvertimeWizardModal),
+  { loading: () => wizardLoading }
+)
+const VacationWizardModal = dynamic(
+  () => import('./VacationWizardModal').then((m) => m.VacationWizardModal),
+  { loading: () => wizardLoading }
+)
+
 interface ShiftRequestsListProps {
   requests: ShiftRequest[]
   organization?: Organization | null
+  employees?: Employee[]
+  organizationId?: string
+  organizationName?: string
 }
+
+/** Tipos de novedad que hoy soportan edición mientras están 'pendiente'. */
+const EDITABLE_TYPES = new Set(['horas_extras', 'solicitud_vacaciones'])
 
 function formatEmissionDate(dateStr?: string | null): string {
   if (!dateStr) return '—'
@@ -43,9 +69,18 @@ function formatEmissionDate(dateStr?: string | null): string {
   return `${dayName}, ${dd}/${mm}/${yyyy}`
 }
 
-export function ShiftRequestsList({ requests, organization }: ShiftRequestsListProps) {
+export function ShiftRequestsList({
+  requests,
+  organization,
+  employees = [],
+  organizationId,
+  organizationName,
+}: ShiftRequestsListProps) {
+  const router = useRouter()
   const [selectedRequest, setSelectedRequest] = useState<ShiftRequest | null>(null)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [editingRequest, setEditingRequest] = useState<ShiftRequest | null>(null)
+  const [editModalOpen, setEditModalOpen] = useState(false)
 
   // La paginación ya viene resuelta por el servidor (ver PaginationBar en la
   // page): `requests` aquí es solo la página actual, no la lista completa.
@@ -100,6 +135,16 @@ export function ShiftRequestsList({ requests, organization }: ShiftRequestsListP
     }
     setSelectedRequest(enrichedReq)
     setDetailModalOpen(true)
+  }
+
+  function handleOpenEdit(req: ShiftRequest) {
+    setEditingRequest(req)
+    setEditModalOpen(true)
+  }
+
+  function handleEditOpenChange(open: boolean) {
+    setEditModalOpen(open)
+    if (!open) setEditingRequest(null)
   }
 
   if (requests.length === 0) {
@@ -240,15 +285,29 @@ export function ShiftRequestsList({ requests, organization }: ShiftRequestsListP
 
                   {/* Acciones */}
                   <TableCell className="pr-6 py-3.5 text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleOpenDetail(req)}
-                      className="h-8 text-xs text-primary font-medium hover:text-primary hover:bg-primary/10 gap-1 cursor-pointer"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                      Ver detalle
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      {req.status === 'pendiente' && EDITABLE_TYPES.has(resolvedType) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenEdit(req)}
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer"
+                          title="Editar novedad pendiente"
+                          aria-label="Editar novedad pendiente"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDetail(req)}
+                        className="h-8 text-xs text-primary font-medium hover:text-primary hover:bg-primary/10 gap-1 cursor-pointer"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        Ver detalle
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               )
@@ -264,6 +323,44 @@ export function ShiftRequestsList({ requests, organization }: ShiftRequestsListP
         onOpenChange={setDetailModalOpen}
         organization={organization}
       />
+
+      {/* Modal de Edición: reutiliza el mismo wizard de creación, precargado
+          con los datos de la solicitud pendiente (ver EDITABLE_TYPES). */}
+      <Dialog open={editModalOpen} onOpenChange={handleEditOpenChange}>
+        <DialogContent
+          className={cn(
+            editingRequest?.request_type === 'solicitud_vacaciones' ||
+              editingRequest?.metadata?.sub_type === 'solicitud_vacaciones'
+              ? 'sm:max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0'
+              : 'sm:max-w-2xl p-0 overflow-hidden border-border/80 gap-0 max-h-[90vh] flex flex-col'
+          )}
+          showCloseButton={false}
+        >
+          {editingRequest && editingRequest.request_type === 'horas_extras' && organizationId && (
+            <OvertimeWizardModal
+              organizationId={organizationId}
+              organizationName={organizationName}
+              employees={employees}
+              editRequest={editingRequest}
+              onOpenChange={handleEditOpenChange}
+              onSuccess={() => router.refresh()}
+            />
+          )}
+          {editingRequest &&
+            (editingRequest.request_type === 'solicitud_vacaciones' ||
+              editingRequest.metadata?.sub_type === 'solicitud_vacaciones') &&
+            organizationId && (
+              <VacationWizardModal
+                organizationId={organizationId}
+                organizationName={organizationName}
+                employees={employees}
+                editRequest={editingRequest}
+                onOpenChange={handleEditOpenChange}
+                onSuccess={() => router.refresh()}
+              />
+            )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

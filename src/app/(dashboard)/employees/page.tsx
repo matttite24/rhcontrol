@@ -112,9 +112,6 @@ export default async function EmployeesPage({
       <PageHeader
         title="Directorio de Empleados"
         description="Perfil, cargo y estado laboral de cada empleado"
-        breadcrumbs={[
-          { label: 'Empleados' },
-        ]}
         showExport
         action={<NewEmployeeButton />}
       />

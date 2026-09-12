@@ -190,7 +190,13 @@ export default async function ShiftRequestsPage({ searchParams }: ShiftRequestsP
 
       {/* Listado de Novedades a Ancho Completo */}
       <div className="flex-1 w-full overflow-x-auto bg-card">
-        <ShiftRequestsList requests={shiftRequests} organization={currentOrg} />
+        <ShiftRequestsList
+          requests={shiftRequests}
+          organization={currentOrg}
+          employees={employees}
+          organizationId={currentOrg.id}
+          organizationName={currentOrg.name}
+        />
         <PaginationBar
           currentPage={currentPage}
           totalPages={totalPages}

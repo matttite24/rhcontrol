@@ -100,10 +100,6 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
       <PageHeader
         title="Contratos"
         description="Gestión de alta, contratos, legalización MDT y avisos de entrada IESS"
-        breadcrumbs={[
-          { label: 'Empleados', href: '/employees' },
-          { label: 'Ingresos & Contratos' },
-        ]}
         action={
           <Link href="/employees/new" className={cn(buttonVariants({ size: 'sm' }), "gap-2")}>
             <Plus className="h-4 w-4" />

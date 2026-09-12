@@ -32,10 +32,13 @@ export async function updateSession(request: NextRequest) {
 
   // Obtener usuario autenticado, con timeout para evitar que el middleware
   // se quede colgado si Supabase no responde (cold start, red lenta, etc.)
+  // 3s en vez de 5s: en operación normal auth.getUser() responde en varios
+  // cientos de ms, así que 5s solo alargaba innecesariamente la espera del
+  // usuario en el caso ya-de-por-sí raro de que Supabase esté lento/caído.
   let user = null
   try {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    const timeoutId = setTimeout(() => controller.abort(), 3000)
 
     const timeout = new Promise<never>((_, reject) => {
       controller.signal.addEventListener('abort', () =>

@@ -35,6 +35,7 @@ import {
 import { printVacationDocument } from '@/lib/shifts/print-vacation'
 import {
   createVacationRequestAction,
+  updateVacationRequestAction,
   getEmployeeVacationBalanceAction,
 } from '@/lib/shifts/actions'
 import { getInitials, formatLongDate } from '@/lib/shifts/format'
@@ -48,6 +49,13 @@ interface VacationWizardModalProps {
   onOpenChange: (open: boolean) => void
   onSuccess?: () => void
   onRegisterRequestClose?: (fn: () => void) => void
+  /**
+   * Presente solo en modo edición (desde la lista de Novedades, botón de
+   * lápiz en filas 'pendiente'): precarga el formulario con esta solicitud
+   * y guarda con updateVacationRequestAction en vez de crear una nueva. Solo
+   * se permite editar solicitudes en status='pendiente'.
+   */
+  editRequest?: ShiftRequest
 }
 
 
@@ -79,21 +87,24 @@ export function VacationWizardModal({
   onOpenChange,
   onSuccess,
   onRegisterRequestClose,
+  editRequest,
 }: VacationWizardModalProps) {
   const router = useRouter()
+  const isEditMode = Boolean(editRequest)
 
   // Pasos: 1. Seleccionar Empleado (+1 año), 2. Fechas & Días, 3. Confirmación
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  // En modo edición se arranca directo en el paso 2: el empleado ya viene fijo.
+  const [step, setStep] = useState<1 | 2 | 3>(isEditMode ? 2 : 1)
   const [submitting, setSubmitting] = useState(false)
   const [createdRequest, setCreatedRequest] = useState<ShiftRequest | null>(null)
   const [showConfirmClose, setShowConfirmClose] = useState(false)
 
-  // Estado del Formulario
-  const [selectedEmpId, setSelectedEmpId] = useState<string>('')
+  // Estado del Formulario — si viene editRequest, se precargan sus valores.
+  const [selectedEmpId, setSelectedEmpId] = useState<string>(editRequest?.employee_id || '')
   const [searchQuery, setSearchQuery] = useState('')
-  const [startDate, setStartDate] = useState<string>('')
-  const [endDate, setEndDate] = useState<string>('')
-  const [reason, setReason] = useState('Descanso anual reglamentario')
+  const [startDate, setStartDate] = useState<string>(editRequest?.metadata?.start_date || '')
+  const [endDate, setEndDate] = useState<string>(editRequest?.metadata?.end_date || '')
+  const [reason, setReason] = useState(editRequest?.reason || 'Descanso anual reglamentario')
 
   // Balance y días tomados
   const [balanceLoading, setBalanceLoading] = useState(false)
@@ -112,9 +123,12 @@ export function VacationWizardModal({
   // Adelanto de días del período vigente aún no acumulados proporcionalmente
   // (ver checkbox "Adelantar días"): solo se ofrece cuando el saldo tomable
   // (arrastre + proporcional a la fecha) ya está en 0.
-  const [useAdvance, setUseAdvance] = useState(false)
+  const [useAdvance, setUseAdvance] = useState(Boolean(editRequest?.metadata?.is_advance))
 
-  // Cargar balance real de vacaciones desde la base de datos al seleccionar empleado
+  // Cargar balance real de vacaciones desde la base de datos al seleccionar empleado.
+  // En modo edición se excluye la propia solicitud del cálculo de días usados
+  // — de lo contrario, contaría contra su propio saldo al re-validar (ver
+  // excludeRequestId en getEmployeeVacationBalanceAction).
   React.useEffect(() => {
     if (!selectedEmpId) {
       setRealBalance(null)
@@ -124,7 +138,7 @@ export function VacationWizardModal({
     async function loadBalance() {
       setBalanceLoading(true)
       try {
-        const res = await getEmployeeVacationBalanceAction(selectedEmpId)
+        const res = await getEmployeeVacationBalanceAction(selectedEmpId, editRequest?.id)
         if (isCurrent && res.success) {
           setRealBalance({
             totalLawDays: res.totalLawDays,
@@ -236,8 +250,16 @@ export function VacationWizardModal({
 
   // Cambiar de empleado invalida cualquier decisión de adelanto tomada para
   // el empleado anterior — sin esto, seleccionar a otro empleado con saldo
-  // normal disponible podría arrastrar el checkbox marcado sin sentido.
+  // normal disponible podría arrastrar el checkbox marcado sin sentido. Se
+  // salta la primera ejecución en modo edición: el efecto corre también en
+  // el montaje inicial, y ahí pisaría el useAdvance precargado desde
+  // editRequest.metadata.is_advance antes de que el usuario cambie nada.
+  const skipFirstAdvanceReset = React.useRef(isEditMode)
   useEffect(() => {
+    if (skipFirstAdvanceReset.current) {
+      skipFirstAdvanceReset.current = false
+      return
+    }
     setUseAdvance(false)
   }, [selectedEmpId])
 
@@ -304,7 +326,50 @@ export function VacationWizardModal({
     if (!selectedEmp || requestedDays <= 0) return
     setSubmitting(true)
 
+    const metadata = {
+      employee_id: selectedEmp.id,
+      employee_name: selectedEmp.full_name,
+      national_id: selectedEmp.national_id ?? undefined,
+      department: selectedEmp.department ?? undefined,
+      position: selectedEmp.position ?? undefined,
+      hire_date: selectedEmp.hire_date ?? undefined,
+      start_date: startDate,
+      end_date: endDate,
+      days_count: requestedDays,
+      available_days: availableDays,
+      remaining_days: remainingDays,
+      settlement_period: effectivePeriod,
+      reason: reason.trim(),
+      // Marca si se usó el adelanto de días no acumulados aún (ver
+      // checkbox "Adelantar días") — deja trazabilidad de que estos días
+      // no venían de saldo ya generado, para auditoría posterior.
+      is_advance: useAdvance && canOfferAdvance,
+    }
+
     try {
+      if (isEditMode && editRequest) {
+        const res = await updateVacationRequestAction({
+          requestId: editRequest.id,
+          organizationId,
+          employeeId: selectedEmp.id,
+          reason: reason.trim() || 'Descanso anual de ley',
+          startDate,
+          endDate,
+          daysCount: requestedDays,
+          metadata,
+        })
+
+        if (!res.success || !res.data) {
+          throw new Error(res.error || 'Error al guardar los cambios.')
+        }
+
+        toast.success('Solicitud de vacaciones actualizada con éxito.')
+        if (onSuccess) onSuccess()
+        onOpenChange(false)
+        router.refresh()
+        return
+      }
+
       const res = await createVacationRequestAction({
         organizationId,
         employeeId: selectedEmp.id,
@@ -313,25 +378,7 @@ export function VacationWizardModal({
         startDate,
         endDate,
         daysCount: requestedDays,
-        metadata: {
-          employee_id: selectedEmp.id,
-          employee_name: selectedEmp.full_name,
-          national_id: selectedEmp.national_id ?? undefined,
-          department: selectedEmp.department ?? undefined,
-          position: selectedEmp.position ?? undefined,
-          hire_date: selectedEmp.hire_date ?? undefined,
-          start_date: startDate,
-          end_date: endDate,
-          days_count: requestedDays,
-          available_days: availableDays,
-          remaining_days: remainingDays,
-          settlement_period: effectivePeriod,
-          reason: reason.trim(),
-          // Marca si se usó el adelanto de días no acumulados aún (ver
-          // checkbox "Adelantar días") — deja trazabilidad de que estos días
-          // no venían de saldo ya generado, para auditoría posterior.
-          is_advance: useAdvance && canOfferAdvance,
-        },
+        metadata,
       })
 
       if (!res.success || !res.data) {
@@ -372,6 +419,12 @@ export function VacationWizardModal({
 
   return (
     <>
+      <div
+        className={cn(
+          'flex flex-col flex-1 min-h-0 transition-[filter] duration-200 ease-out motion-reduce:transition-none',
+          showConfirmClose && 'blur-[6px] pointer-events-none'
+        )}
+      >
       {/* El <DialogContent> único vive en el launcher. Ver OvertimeWizardModal. */}
           {/* HEADER DEL MODAL CON INDICADOR DE PASOS */}
           <div className="p-5 border-b bg-emerald-500/5 dark:bg-emerald-950/20">
@@ -382,12 +435,13 @@ export function VacationWizardModal({
                 </div>
                 <div>
                   <DialogTitle className="text-base font-bold text-foreground">
-                    Solicitud de Vacaciones
+                    {isEditMode ? 'Editar Solicitud de Vacaciones' : 'Solicitud de Vacaciones'}
                   </DialogTitle>
                   <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                    {step === 1 && 'Paso 1: Seleccionar empleado con más de 1 año de antigüedad'}
-                    {step === 2 && 'Paso 2: Período a liquidar y rango de fechas de descanso'}
-                    {step === 3 && 'Paso 3: Emisión oficial y documento para aprobación'}
+                    {isEditMode && 'Modifica los datos mientras la solicitud siga pendiente de aprobación'}
+                    {!isEditMode && step === 1 && 'Paso 1: Seleccionar empleado con más de 1 año de antigüedad'}
+                    {!isEditMode && step === 2 && 'Paso 2: Período a liquidar y rango de fechas de descanso'}
+                    {!isEditMode && step === 3 && 'Paso 3: Emisión oficial y documento para aprobación'}
                   </DialogDescription>
                 </div>
               </div>
@@ -763,7 +817,7 @@ export function VacationWizardModal({
 
           {/* FOOTER CON BOTONES DE NAVEGACIÓN */}
           <div className="p-4 border-t bg-muted/10 flex items-center justify-between gap-3">
-            {step > 1 && !createdRequest ? (
+            {step > 1 && !createdRequest && !(isEditMode && step === 2) ? (
               <Button
                 type="button"
                 variant="outline"
@@ -812,12 +866,12 @@ export function VacationWizardModal({
                     {submitting ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Emitiendo...
+                        {isEditMode ? 'Guardando...' : 'Emitiendo...'}
                       </>
                     ) : (
                       <>
                         <CheckCircle2 className="h-4 w-4" />
-                        Emitir Solicitud
+                        {isEditMode ? 'Guardar Cambios' : 'Emitir Solicitud'}
                       </>
                     )}
                   </Button>
@@ -825,6 +879,8 @@ export function VacationWizardModal({
               </div>
             )}
           </div>
+
+      </div>
 
       {/* DIÁLOGO CONFIRMACIÓN DESCARTAR (sub-modal independiente, mantiene su propio Dialog) */}
       <Dialog open={showConfirmClose} onOpenChange={setShowConfirmClose}>

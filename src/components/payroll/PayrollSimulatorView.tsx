@@ -265,10 +265,6 @@ export function PayrollSimulatorView({ currentOrg }: PayrollSimulatorViewProps) 
       <PageHeader
         title="Simulador de Rol"
         description="Calcula cuánto percibirá un nuevo colaborador y el costo para la empresa antes de contratar, sin guardar registros."
-        breadcrumbs={[
-          { label: 'Nómina', href: '/payroll' },
-          { label: 'Simulador' },
-        ]}
         action={
           <div className="flex items-center gap-2">
             <Button

@@ -89,10 +89,6 @@ export default async function EmployeeProfilePage({
             ? `${employee.position} — ${employee.department ?? 'General'}`
             : 'Empleado'
         }
-        breadcrumbs={[
-          { label: 'Empleados', href: '/employees' },
-          { label: employee.full_name },
-        ]}
         action={
           <div className="flex items-center gap-2">
             <Link 

@@ -323,6 +323,12 @@ export function SalaryAdvanceWizardModal({
 
   return (
     <>
+      <div
+        className={cn(
+          'flex flex-col flex-1 min-h-0 transition-[filter] duration-200 ease-out motion-reduce:transition-none',
+          showConfirmClose && 'blur-[6px] pointer-events-none'
+        )}
+      >
       {/* El <DialogContent> único vive en el launcher. Ver OvertimeWizardModal (Turnos). */}
           {/* Header con colores azules y padding derecho */}
           <DialogHeader className="p-5 pb-4 bg-blue-500/10 border-b border-blue-500/20 text-left shrink-0 pr-12">
@@ -764,6 +770,8 @@ export function SalaryAdvanceWizardModal({
               </>
             )}
           </div>
+
+      </div>
 
       {/* Diálogo de Confirmación para Evitar Cierre Accidental (sub-modal independiente, mantiene su propio Dialog) */}
       <Dialog open={showConfirmClose} onOpenChange={setShowConfirmClose}>
