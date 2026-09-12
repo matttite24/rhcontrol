@@ -134,7 +134,17 @@ export function ShiftRequestsList({ requests, organization }: ShiftRequestsListP
           <TableBody>
             {requests.map((req) => {
               const isLeavePermission = req.request_type === 'permiso_laboral' || req.metadata?.sub_type === 'permiso_laboral'
-              const resolvedType = isLeavePermission ? 'permiso_laboral' : req.request_type
+              const isVacation = req.request_type === 'solicitud_vacaciones' || req.metadata?.sub_type === 'solicitud_vacaciones'
+              // Igual que horas extras/permisos: algunas filas quedan guardadas
+              // con request_type='otro' + metadata.sub_type='solicitud_vacaciones'
+              // (fallback cuando el check constraint de Postgres rechazaba el
+              // tipo directo) — sin esta normalización, esas filas caían al
+              // icono genérico FileText en vez de la palmera.
+              const resolvedType = isLeavePermission
+                ? 'permiso_laboral'
+                : isVacation
+                ? 'solicitud_vacaciones'
+                : req.request_type
               const typeMeta = SHIFT_REQUEST_TYPE_OPTIONS.find((t) => t.type === resolvedType)
               const TypeIcon = typeMeta?.icon || FileText
               const statusInfo = SHIFT_REQUEST_STATUS_MAP[req.status] ?? SHIFT_REQUEST_STATUS_MAP.pendiente
