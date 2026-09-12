@@ -180,6 +180,8 @@ export function ShiftRequestDetailModal({
           toast.success('Permiso aprobado: Deducción registrada en nómina.')
         } else if (metadata.recovery_method === 'cargo_vacaciones') {
           toast.success('Permiso aprobado: Descontado de vacaciones anuales.')
+        } else if (metadata.recovery_method === 'sin_descuento') {
+          toast.success('Permiso aprobado: falta autorizada sin descuento.')
         } else {
           toast.success('Permiso laboral aprobado con éxito.')
         }
@@ -478,6 +480,7 @@ export function ShiftRequestDetailModal({
                   <div className="p-2.5 rounded-lg bg-muted/40 border border-border/60 font-medium text-foreground">
                     {request.metadata.recovery_method === 'cargo_vacaciones' && 'Cargo a Vacaciones anuales'}
                     {request.metadata.recovery_method === 'descuento_dia' && 'Descuento Salarial en Rol de Pagos'}
+                    {request.metadata.recovery_method === 'sin_descuento' && 'Falta Autorizada sin Descuento'}
                     {request.metadata.recovery_method === 'recuperacion_dias' && `Recuperación en fechas y horarios acordados (${request.metadata.recovery_schedules?.length || 0} turnos)`}
                     {request.metadata.recovery_method === 'reemplazo_personal' && `Reemplazo por: ${request.metadata.replacement_employee_name || 'Compañero asignado'}`}
                   </div>

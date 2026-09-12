@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   Employee,
+  EmployeeSchedule,
   ShiftRequest,
   LeaveUnit,
   LeaveRecoveryMethod,
-  LeaveRecoverySchedule,
   LeaveIncidentMetadata,
   Organization,
+  DayOfWeek,
 } from '@/types/employee'
 import {
   Dialog,
@@ -37,20 +38,23 @@ import {
   ChevronLeft,
   Loader2,
   Search,
-  FileText,
   AlertTriangle,
   Palmtree,
   DollarSign,
   Calendar,
   Users,
-  Plus,
-  Trash2,
 } from 'lucide-react'
 import { printLeavePermissionDocument } from '@/lib/shifts/print-leave-permission'
 import { createLeavePermissionAction, getEmployeeVacationBalanceAction } from '@/lib/shifts/actions'
 import { getInitials, formatLongDate } from '@/lib/shifts/format'
-import { normalizeMinuteRange } from '@/lib/shifts/time'
+import { normalizeMinuteRange, parseTimeToMinutes, intervalsOverlap } from '@/lib/shifts/time'
 import { cn } from '@/lib/utils'
+
+function formatIsoDate(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
 
 /** Suma `days` días a una fecha ISO (YYYY-MM-DD) sin problemas de zona horaria. */
 function addDaysISO(iso: string, days: number): string {
@@ -59,6 +63,16 @@ function addDaysISO(iso: string, days: number): string {
   const mm = String(dt.getMonth() + 1).padStart(2, '0')
   const dd = String(dt.getDate()).padStart(2, '0')
   return `${dt.getFullYear()}-${mm}-${dd}`
+}
+
+const DAYS_OF_WEEK_MAP: Record<number, DayOfWeek> = {
+  0: 'Domingo',
+  1: 'Lunes',
+  2: 'Martes',
+  3: 'Miércoles',
+  4: 'Jueves',
+  5: 'Viernes',
+  6: 'Sábado',
 }
 
 interface LeavePermissionWizardModalProps {
@@ -115,6 +129,11 @@ export function LeavePermissionWizardModal({
     loading: false,
   })
 
+  // Horario semanal del empleado seleccionado, para bloquear pedir permiso
+  // en un día que ya es libre por horario (no tiene sentido "faltar" a algo
+  // que no era laborable, ver validación en calculatedDays/isRequestedRangeValid).
+  const [employeeSchedules, setEmployeeSchedules] = useState<EmployeeSchedule[]>([])
+
   // Paso 2: Tiempo
   const [leaveUnit, setLeaveUnit] = useState<LeaveUnit>('dias')
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0])
@@ -125,7 +144,6 @@ export function LeavePermissionWizardModal({
 
   // Paso 3: Recuperación y justificación
   const [recoveryMethod, setRecoveryMethod] = useState<LeaveRecoveryMethod>('cargo_vacaciones')
-  const [recoverySchedules, setRecoverySchedules] = useState<LeaveRecoverySchedule[]>([])
   const [replacementEmployeeId, setReplacementEmployeeId] = useState<string>('')
   const [reason, setReason] = useState('')
 
@@ -195,12 +213,78 @@ export function LeavePermissionWizardModal({
     return Number(diff.toFixed(2))
   }, [leaveUnit, startTime, endTime])
 
-  // Total de horas en el cronograma de recuperación
-  const totalRecoveryHours = useMemo(() => {
-    return Number(
-      recoverySchedules.reduce((acc, curr) => acc + (Number(curr.hours) || 0), 0).toFixed(2)
-    )
-  }, [recoverySchedules])
+  // Fechas del rango solicitado que caen en un día LIBRE por horario del
+  // empleado — no tiene sentido pedir permiso para faltar a algo que no era
+  // laborable. Si no hay horario cargado (schedules vacío) no se bloquea:
+  // se asume que el empleado no tiene horario configurado, no que todos sus
+  // días son libres (evita falsos bloqueos por falta de datos).
+  const nonWorkdaysInRange = useMemo(() => {
+    if (employeeSchedules.length === 0) return []
+    const dates =
+      leaveUnit === 'dias'
+        ? (() => {
+            if (!startDate || !endDate) return []
+            const result: string[] = []
+            const [y, m, d] = startDate.split('-').map(Number)
+            const cursor = new Date(y, m - 1, d)
+            // El día de retorno (endDate) no se ausenta, solo los días entre medio.
+            for (let i = 0; i < calculatedDays; i++) {
+              result.push(formatIsoDate(cursor))
+              cursor.setDate(cursor.getDate() + 1)
+            }
+            return result
+          })()
+        : startDate
+        ? [startDate]
+        : []
+
+    return dates.filter((iso) => {
+      const [y, m, d] = iso.split('-').map(Number)
+      const dayName = DAYS_OF_WEEK_MAP[new Date(y, m - 1, d).getDay()]
+      const sched = employeeSchedules.find((s) => s.day_of_week === dayName)
+      return sched ? !sched.is_workday : false
+    })
+  }, [employeeSchedules, leaveUnit, startDate, endDate, calculatedDays])
+
+  const hasNonWorkdayConflict = nonWorkdaysInRange.length > 0
+
+  // Horario habitual del empleado para la fecha del permiso por HORAS — sirve
+  // de referencia visual y para validar que el tramo solicitado no caiga
+  // fuera de su jornada (ver scheduleOutsideWarning).
+  const activeDaySchedule = useMemo(() => {
+    if (leaveUnit !== 'horas' || !startDate || employeeSchedules.length === 0) return null
+    const [y, m, d] = startDate.split('-').map(Number)
+    const dayName = DAYS_OF_WEEK_MAP[new Date(y, m - 1, d).getDay()]
+    return employeeSchedules.find((s) => s.day_of_week === dayName) || null
+  }, [leaveUnit, startDate, employeeSchedules])
+
+  // Advertencia (no bloqueante) si el tramo de horas solicitado no se solapa
+  // con NINGÚN turno regular del empleado ese día — sugiere que se está
+  // pidiendo permiso sobre horas que de todos modos no trabajaba.
+  const scheduleOutsideWarning = useMemo(() => {
+    if (leaveUnit !== 'horas' || !activeDaySchedule || !activeDaySchedule.is_workday) return null
+    if (!startTime || !endTime) return null
+
+    const { start: reqStart, end: reqEnd } = normalizeMinuteRange(startTime, endTime)
+
+    const s1Start = parseTimeToMinutes(activeDaySchedule.start_time_1 || '08:00')
+    let s1End = parseTimeToMinutes(activeDaySchedule.end_time_1 || '17:00')
+    if (s1End <= s1Start) s1End += 24 * 60
+    const overlapsShift1 = intervalsOverlap(reqStart, reqEnd, s1Start, s1End)
+
+    let overlapsShift2 = false
+    if (activeDaySchedule.has_split_shift) {
+      const s2Start = parseTimeToMinutes(activeDaySchedule.start_time_2 || '14:00')
+      let s2End = parseTimeToMinutes(activeDaySchedule.end_time_2 || '18:00')
+      if (s2End <= s2Start) s2End += 24 * 60
+      overlapsShift2 = intervalsOverlap(reqStart, reqEnd, s2Start, s2End)
+    }
+
+    if (!overlapsShift1 && !overlapsShift2) {
+      return `El tramo ${startTime} - ${endTime} no coincide con el horario laboral del empleado ese día (${activeDaySchedule.start_time_1} - ${activeDaySchedule.end_time_1}${activeDaySchedule.has_split_shift ? ` | ${activeDaySchedule.start_time_2} - ${activeDaySchedule.end_time_2}` : ''}). Revisa si corresponde pedir permiso sobre esas horas.`
+    }
+    return null
+  }, [leaveUnit, activeDaySchedule, startTime, endTime])
 
   const EMPTY_BALANCE = {
     availableDays: 0,
@@ -250,6 +334,27 @@ export function LeavePermissionWizardModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEmpId])
 
+  // Cargar horario semanal del empleado seleccionado, para validar que las
+  // fechas de permiso no caigan en un día ya libre por horario.
+  useEffect(() => {
+    if (!selectedEmpId) {
+      setEmployeeSchedules([])
+      return
+    }
+    let isMounted = true
+    async function loadSchedules() {
+      const { data } = await supabase
+        .from('employee_schedules')
+        .select('*')
+        .eq('employee_id', selectedEmpId)
+      if (isMounted && data) setEmployeeSchedules(data as EmployeeSchedule[])
+    }
+    loadSchedules()
+    return () => {
+      isMounted = false
+    }
+  }, [selectedEmpId, supabase])
+
   // Reset del asistente
   function handleReset() {
     setStep(1)
@@ -263,7 +368,6 @@ export function LeavePermissionWizardModal({
     setStartTime('08:00')
     setEndTime('12:00')
     setRecoveryMethod('cargo_vacaciones')
-    setRecoverySchedules([])
     setReplacementEmployeeId('')
     setReason('')
     setCreatedRequest(null)
@@ -294,43 +398,6 @@ export function LeavePermissionWizardModal({
     setShowConfirmClose(false)
     handleReset()
     onOpenChange(false)
-  }
-
-  // Agregar fila al cronograma de recuperación
-  function handleAddRecoverySchedule() {
-    const nextDate = startDate || new Date().toISOString().split('T')[0]
-    setRecoverySchedules((prev) => [
-      ...prev,
-      {
-        date: nextDate,
-        start_time: '18:00',
-        end_time: '20:00',
-        hours: 2,
-      },
-    ])
-  }
-
-  // Eliminar fila de recuperación
-  function handleRemoveRecoverySchedule(index: number) {
-    setRecoverySchedules((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  // Modificar fila de recuperación
-  function handleUpdateRecoverySchedule(
-    index: number,
-    field: keyof LeaveRecoverySchedule,
-    value: any
-  ) {
-    setRecoverySchedules((prev) => {
-      const next = [...prev]
-      const row = { ...next[index], [field]: value }
-      if (field === 'start_time' || field === 'end_time') {
-        const { start: t1, end: t2 } = normalizeMinuteRange(row.start_time, row.end_time)
-        row.hours = Number(((t2 - t1) / 60).toFixed(2))
-      }
-      next[index] = row
-      return next
-    })
   }
 
   // Guardar incidencia de Permiso Laboral
@@ -378,7 +445,9 @@ export function LeavePermissionWizardModal({
         end_time: leaveUnit === 'horas' ? endTime : undefined,
         requested_hours: leaveUnit === 'horas' ? calculatedHours : undefined,
         recovery_method: recoveryMethod,
-        recovery_schedules: recoveryMethod === 'recuperacion_dias' ? recoverySchedules : undefined,
+        // Sin fechas capturadas en el wizard: se define después con la
+        // jefatura y se completa a mano en el documento impreso.
+        recovery_schedules: undefined,
         replacement_employee_id:
           recoveryMethod === 'reemplazo_personal' ? replacementEmployeeId : undefined,
         replacement_employee_name:
@@ -438,7 +507,9 @@ export function LeavePermissionWizardModal({
       endTime: leaveUnit === 'horas' ? endTime : undefined,
       reason: reason.trim(),
       recoveryMethod,
-      recoverySchedules: recoveryMethod === 'recuperacion_dias' ? recoverySchedules : undefined,
+      // Sin fechas capturadas en el wizard: el documento impreso deja un
+      // espacio en blanco para completarlas a mano una vez acordadas.
+      recoverySchedules: undefined,
       replacementEmployeeName:
         recoveryMethod === 'reemplazo_personal' ? replacementEmp?.full_name : undefined,
     })
@@ -659,6 +730,34 @@ export function LeavePermissionWizardModal({
                 ) : (
                   /* Formulario si es por Horas */
                   <div className="space-y-3 pt-1">
+                    {/* Referencia del horario habitual, para no pedir permiso
+                        sobre un tramo que de todos modos el empleado no
+                        trabajaba ese día (mismo patrón que OvertimeWizardModal). */}
+                    {startDate && (
+                      <div className="flex items-center justify-between p-2 rounded-lg bg-muted/20 border text-xs">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Calendar className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <span className="font-medium text-foreground">Horario habitual esa fecha:</span>
+                        </div>
+                        <div>
+                          {activeDaySchedule ? (
+                            activeDaySchedule.is_workday ? (
+                              <span className="font-mono font-semibold text-foreground bg-muted px-2 py-0.5 rounded text-[11px]">
+                                {activeDaySchedule.start_time_1} - {activeDaySchedule.end_time_1}
+                                {activeDaySchedule.has_split_shift && ` | ${activeDaySchedule.start_time_2} - ${activeDaySchedule.end_time_2}`}
+                              </span>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] bg-muted/50 text-muted-foreground font-mono">
+                                Día Libre / Descanso
+                              </Badge>
+                            )
+                          ) : (
+                            <span className="text-muted-foreground text-[11px] italic">Sin horario asignado</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-1.5">
                       <Label htmlFor="leave_date" className="text-xs font-medium">
                         Fecha del Permiso *
@@ -701,6 +800,35 @@ export function LeavePermissionWizardModal({
                         {calculatedHours} horas
                       </span>
                     </div>
+
+                    {/* Advertencia (no bloqueante): el tramo no se solapa con
+                        ningún turno regular del empleado ese día. */}
+                    {scheduleOutsideWarning && (
+                      <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-xs">
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                        <p className="leading-relaxed">{scheduleOutsideWarning}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Bloqueo: el rango solicitado incluye un día que ya es
+                    libre por horario del empleado — no tiene sentido pedir
+                    permiso para faltar a algo que no era laborable. */}
+                {hasNonWorkdayConflict && (
+                  <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">
+                        {nonWorkdaysInRange.length === 1 ? 'Este día ya es libre' : 'Hay días ya libres en el rango'}
+                      </span>
+                      <p className="mt-0.5 leading-relaxed">
+                        {formatLongDate(nonWorkdaysInRange[0])}
+                        {nonWorkdaysInRange.length > 1 && ` y ${nonWorkdaysInRange.length - 1} fecha(s) más`}{' '}
+                        {nonWorkdaysInRange.length === 1 ? 'no es' : 'no son'} día(s) laborable(s) según el horario
+                        del empleado. Ajusta el rango para que no incluya días de descanso.
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -717,6 +845,24 @@ export function LeavePermissionWizardModal({
                     ¿Cómo se compensará o cubrirá este permiso laboral?
                   </p>
                 </div>
+
+                {/* Tarjeta de Referencia del Empleado (mismo patrón que en otros pasos/wizards) */}
+                {selectedEmp && (
+                  <div className="p-3 rounded-xl border bg-muted/20 space-y-2.5">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8 ring-1 ring-border shrink-0">
+                        <AvatarImage src={selectedEmp.avatar_url ?? undefined} alt={selectedEmp.full_name} />
+                        <AvatarFallback className="text-[10px] font-semibold">
+                          {getInitials(selectedEmp.full_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-xs font-semibold text-foreground">{selectedEmp.full_name}</span>
+                        <span className="text-[11px] text-muted-foreground truncate">{selectedEmp.position || selectedEmp.department || 'Empleado'}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* 4 Opciones de Recuperación */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -740,25 +886,49 @@ export function LeavePermissionWizardModal({
                     </p>
                   </button>
 
-                  {/* Opción B: Descuento en día de trabajo */}
-                  <button
-                    type="button"
-                    onClick={() => setRecoveryMethod('descuento_dia')}
+                  {/* Opción B: Descuento en día de trabajo (o, con el check,
+                      falta autorizada SIN descuento — mismo card, mismo
+                      grupo de selección, distinto costo final). */}
+                  <div
                     className={cn(
-                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1",
-                      recoveryMethod === 'descuento_dia'
+                      "p-3 rounded-xl border text-left transition-all flex flex-col gap-1.5",
+                      recoveryMethod === 'descuento_dia' || recoveryMethod === 'sin_descuento'
                         ? "bg-amber-500/10 border-amber-500 text-foreground ring-1 ring-amber-500/30"
                         : "bg-card hover:bg-muted/40 border-border/60"
                     )}
                   >
-                    <div className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                      <span className="text-xs font-bold text-foreground">Descuento en día de trabajo</span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      Genera deducción salarial en el siguiente rol de pagos.
-                    </p>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setRecoveryMethod('descuento_dia')}
+                      className="flex flex-col gap-1 text-left cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                        <span className="text-xs font-bold text-foreground">Descuento en día de trabajo</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Genera deducción salarial en el siguiente rol de pagos.
+                      </p>
+                    </button>
+
+                    {(recoveryMethod === 'descuento_dia' || recoveryMethod === 'sin_descuento') && (
+                      <label
+                        htmlFor="waive_discount"
+                        className="flex items-center gap-2 pt-1.5 mt-0.5 border-t border-amber-500/20 cursor-pointer select-none"
+                      >
+                        <input
+                          id="waive_discount"
+                          type="checkbox"
+                          checked={recoveryMethod === 'sin_descuento'}
+                          onChange={(e) => setRecoveryMethod(e.target.checked ? 'sin_descuento' : 'descuento_dia')}
+                          className="h-3.5 w-3.5 rounded border-input text-amber-600 focus:ring-amber-500 cursor-pointer"
+                        />
+                        <span className="text-[11px] font-medium text-foreground">
+                          Autorizar la falta sin descuento
+                        </span>
+                      </label>
+                    )}
+                  </div>
 
                   {/* Opción C: Recuperación con otros días */}
                   <button
@@ -884,73 +1054,16 @@ export function LeavePermissionWizardModal({
                 )}
 
                 {recoveryMethod === 'recuperacion_dias' && (
-                  <div className="p-3.5 rounded-xl border bg-muted/20 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label className="text-xs font-medium">Jornadas de Reposición *</Label>
-                        <p className="text-[11px] text-muted-foreground">
-                          Total acumulado a reponer: <strong className="font-mono">{totalRecoveryHours} horas</strong>
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={handleAddRecoverySchedule}
-                        className="h-7 text-xs gap-1 cursor-pointer"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        Agregar fecha
-                      </Button>
+                  <div className="p-3.5 rounded-xl border bg-blue-500/5 border-blue-500/20 flex items-start gap-2.5">
+                    <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <span className="font-semibold text-foreground">Fechas de reposición pendientes por acordar</span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Al momento del permiso aún no se sabe cuándo se repondrá el tiempo. El documento impreso
+                        de esta solicitud incluye un espacio en blanco para completar a mano las fechas y horarios
+                        acordados una vez definidos con la jefatura.
+                      </p>
                     </div>
-
-                    {recoverySchedules.length === 0 ? (
-                      <div className="text-center py-4 border border-dashed rounded-lg text-xs text-muted-foreground">
-                        Haz clic en "Agregar fecha" para definir los horarios de recuperación.
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {recoverySchedules.map((row, idx) => (
-                          <div key={idx} className="flex items-center gap-2 p-2 bg-card rounded-lg border text-xs">
-                            <div className="w-[35%]">
-                              <DatePicker
-                                name={`recovery_date_${idx}`}
-                                value={row.date}
-                                onChange={(d) => handleUpdateRecoverySchedule(idx, 'date', d)}
-                              />
-                            </div>
-                            <div className="w-[25%]">
-                              <TimePicker
-                                value={row.start_time}
-                                onChange={(t) => handleUpdateRecoverySchedule(idx, 'start_time', t)}
-                                className="h-8 text-xs"
-                              />
-                            </div>
-                            <div className="w-[25%]">
-                              <TimePicker
-                                value={row.end_time}
-                                onChange={(t) => handleUpdateRecoverySchedule(idx, 'end_time', t)}
-                                className="h-8 text-xs"
-                              />
-                            </div>
-                            <div className="w-[10%] text-right font-mono font-bold text-primary text-[11px]">
-                              {row.hours}h
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveRecoverySchedule(idx)}
-                              title="Eliminar jornada de reposición"
-                              aria-label="Eliminar jornada de reposición"
-                              className="h-7 w-7 p-0 text-destructive hover:text-destructive cursor-pointer"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -1011,7 +1124,8 @@ export function LeavePermissionWizardModal({
                       Compensación: <span className="font-medium text-foreground">
                         {recoveryMethod === 'cargo_vacaciones' && 'Cargo a Vacaciones'}
                         {recoveryMethod === 'descuento_dia' && 'Descuento Salarial en Rol de Pagos'}
-                        {recoveryMethod === 'recuperacion_dias' && `Recuperación de turnos (${totalRecoveryHours} hrs)`}
+                        {recoveryMethod === 'sin_descuento' && 'Falta Autorizada sin Descuento'}
+                        {recoveryMethod === 'recuperacion_dias' && 'Recuperación de turnos (fechas por acordar)'}
                         {recoveryMethod === 'reemplazo_personal' && `Reemplazo por: ${replacementEmp?.full_name}`}
                       </span>
                     </div>
@@ -1077,7 +1191,8 @@ export function LeavePermissionWizardModal({
                   onClick={() => setStep(3)}
                   disabled={
                     !startDate ||
-                    (leaveUnit === 'horas' && (!startTime || !endTime || calculatedHours <= 0))
+                    (leaveUnit === 'horas' && (!startTime || !endTime || calculatedHours <= 0)) ||
+                    hasNonWorkdayConflict
                   }
                   className="gap-1.5 cursor-pointer font-medium"
                 >
@@ -1094,8 +1209,7 @@ export function LeavePermissionWizardModal({
                   disabled={
                     loading ||
                     !reason.trim() ||
-                    (recoveryMethod === 'reemplazo_personal' && !replacementEmployeeId) ||
-                    (recoveryMethod === 'recuperacion_dias' && recoverySchedules.length === 0)
+                    (recoveryMethod === 'reemplazo_personal' && !replacementEmployeeId)
                   }
                   className="gap-1.5 cursor-pointer font-semibold bg-violet-600 hover:bg-violet-700 text-white"
                 >

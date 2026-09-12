@@ -252,6 +252,13 @@ export type LeaveRecoveryMethod =
   | 'descuento_dia'
   | 'recuperacion_dias'
   | 'reemplazo_personal'
+  /**
+   * Falta autorizada sin ningún costo: no genera deducción salarial ni
+   * descuenta vacaciones. Se elige marcando el checkbox "Autorizar la falta
+   * sin descuento" dentro de la tarjeta de "Descuento en día de trabajo" —
+   * misma tarjeta visual, comportamiento distinto (ver LeavePermissionWizardModal).
+   */
+  | 'sin_descuento'
 
 export interface LeaveRecoverySchedule {
   date: string

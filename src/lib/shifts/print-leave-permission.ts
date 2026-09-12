@@ -26,7 +26,7 @@ export interface PrintLeavePermissionData {
   startTime?: string
   endTime?: string
   reason: string
-  recoveryMethod: 'cargo_vacaciones' | 'descuento_dia' | 'recuperacion_dias' | 'reemplazo_personal'
+  recoveryMethod: 'cargo_vacaciones' | 'descuento_dia' | 'recuperacion_dias' | 'reemplazo_personal' | 'sin_descuento'
   recoverySchedules?: LeaveRecoverySchedule[]
   replacementEmployeeName?: string
   discountAmount?: number
@@ -52,6 +52,9 @@ export function printLeavePermissionDocument(data: PrintLeavePermissionData) {
   if (data.recoveryMethod === 'descuento_dia') {
     recoveryLabel = 'Descuento Salarial'
     recoveryNote = 'El valor proporcional se descontará en el próximo rol de pagos de nómina.'
+  } else if (data.recoveryMethod === 'sin_descuento') {
+    recoveryLabel = 'Falta Autorizada sin Descuento'
+    recoveryNote = 'La ausencia queda autorizada sin generar deducción salarial ni afectar el saldo de vacaciones.'
   } else if (data.recoveryMethod === 'reemplazo_personal') {
     recoveryLabel = `Reemplazo por: ${data.replacementEmployeeName || 'Compañero asignado'}`
     recoveryNote = 'El compañero indicado cubrirá las funciones durante la ausencia.'
@@ -112,6 +115,23 @@ export function printLeavePermissionDocument(data: PrintLeavePermissionData) {
       <strong>Forma de Compensación — ${recoveryLabel}</strong>
       ${recoveryNote}
     </div>
+
+    ${
+      data.recoveryMethod === 'recuperacion_dias'
+        ? `
+    <table class="data-table" style="margin-top:14px;">
+      <tr>
+        <td class="key">Fecha(s) de Reposición Acordada(s)</td>
+        <td style="height:32px;">&nbsp;</td>
+      </tr>
+      <tr>
+        <td class="key">Horario(s) de Reposición</td>
+        <td style="height:32px;">&nbsp;</td>
+      </tr>
+    </table>
+    `
+        : ''
+    }
 
     <p class="body-text" style="margin-top:22px;">
       El presente documento se hace efectivo mediante la firma de la jefatura inmediata, que autoriza
