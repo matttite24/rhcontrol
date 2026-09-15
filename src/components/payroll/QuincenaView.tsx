@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Table,
@@ -13,6 +13,14 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { Employee, Organization } from '@/types/employee'
 import {
   buildQuincenaReference,
@@ -21,7 +29,19 @@ import {
   QuincenaTsvRow,
 } from '@/lib/payroll/generate-quincena-tsv'
 import { printQuincenaDocument } from '@/lib/payroll/print-quincena'
-import { Download, Printer, AlertTriangle, Users, DollarSign, Calendar } from 'lucide-react'
+import { markQuincenaPaidAction } from '@/lib/payroll/quincena-actions'
+import {
+  Download,
+  Printer,
+  AlertTriangle,
+  Users,
+  DollarSign,
+  Calendar,
+  ChevronDown,
+  Wallet,
+  CheckCircle2,
+  Loader2,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type QuincenaEmployee = Pick<
@@ -45,6 +65,9 @@ interface QuincenaViewProps {
   year: number
   month: number
   organization?: Partial<Organization> | null
+  organizationId: string
+  /** Empleados ya marcados como pagados para este año/mes (quincena_payments). */
+  paidEmployeeIds: string[]
 }
 
 const MONTH_OPTIONS = [
@@ -72,9 +95,31 @@ function getInitials(name: string) {
     .toUpperCase()
 }
 
-export function QuincenaView({ employees, year, month, organization }: QuincenaViewProps) {
+function formatMoney(n: number) {
+  return n.toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+export function QuincenaView({
+  employees,
+  year,
+  month,
+  organization,
+  organizationId,
+  paidEmployeeIds,
+}: QuincenaViewProps) {
   const router = useRouter()
   const [exporting, setExporting] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [closing, setClosing] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  // Selección de a quién se le va a pagar/exportar/marcar — por defecto todos
+  // los que ya tienen datos completos, para no obligar a marcar uno por uno.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(employees.filter((e) => e.national_id?.trim() && e.account_number?.trim()).map((e) => e.id))
+  )
+
+  const paidSet = useMemo(() => new Set(paidEmployeeIds), [paidEmployeeIds])
 
   function handleMonthChange(newYear: number, newMonth: number) {
     router.push(`/payroll/quincena?year=${newYear}&month=${newMonth}`)
@@ -97,36 +142,62 @@ export function QuincenaView({ employees, year, month, organization }: QuincenaV
     return { validEmployees: valid, invalidEmployees: invalid }
   }, [employees])
 
-  const totalAmount = employees.reduce((sum, e) => sum + (Number(e.biweekly_advance_amount) || 0), 0)
+  const selectedEmployees = useMemo(
+    () => employees.filter((e) => selectedIds.has(e.id)),
+    [employees, selectedIds]
+  )
+  const notSelected = useMemo(
+    () => employees.filter((e) => !selectedIds.has(e.id)),
+    [employees, selectedIds]
+  )
+
+  const totalAmount = selectedEmployees.reduce((sum, e) => sum + (Number(e.biweekly_advance_amount) || 0), 0)
   const reference = buildQuincenaReference(year, month)
 
+  function toggleOne(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  function toggleAll(checked: boolean) {
+    setSelectedIds(checked ? new Set(employees.map((e) => e.id)) : new Set())
+  }
+
+  const allSelected = employees.length > 0 && selectedIds.size === employees.length
+  const someSelected = selectedIds.size > 0 && !allSelected
+
   async function handleExport() {
-    if (validEmployees.length === 0) return
-    setExporting(true)
-    try {
-      const rows: QuincenaTsvRow[] = validEmployees.map((emp) => ({
+    const rows: QuincenaTsvRow[] = selectedEmployees
+      .filter((e) => e.national_id?.trim() && e.account_number?.trim())
+      .map((emp) => ({
         fullName: emp.full_name,
         nationalId: emp.national_id!.trim(),
         bankCode: emp.bank_code,
         accountNumber: emp.account_number,
         amount: Number(emp.biweekly_advance_amount) || 0,
       }))
+    if (rows.length === 0) return
+    setExporting(true)
+    try {
       downloadQuincenaTsv(rows, year, month)
     } finally {
       setExporting(false)
     }
   }
 
-  // El reporte imprimible incluye a TODOS los empleados con el anticipo
-  // configurado, incluso los que tienen datos incompletos y por eso no
-  // entran en el TSV bancario — es un checklist físico para marcar quién
+  // El reporte imprimible incluye a todos los seleccionados, incluso los que
+  // tienen datos incompletos — es un checklist físico para marcar quién
   // recibió su pago, no depende de que la transferencia bancaria sea viable.
   function handlePrint() {
     printQuincenaDocument({
       organization,
       year,
       month,
-      rows: employees.map((emp) => ({
+      rows: selectedEmployees.map((emp) => ({
         fullName: emp.full_name,
         nationalId: emp.national_id ?? null,
         accountNumber: emp.account_number,
@@ -135,11 +206,82 @@ export function QuincenaView({ employees, year, month, organization }: QuincenaV
     })
   }
 
+  function requestPay() {
+    setConfirmOpen(true)
+  }
+
+  function closeConfirm() {
+    // Igual que en los demás modales de nómina: blurea el contenido del
+    // fondo mientras se confirma cerrar, en vez de simplemente desmontar.
+    setClosing(true)
+    setTimeout(() => {
+      setConfirmOpen(false)
+      setClosing(false)
+    }, 150)
+  }
+
+  function confirmPay() {
+    if (selectedEmployees.length === 0) return
+    startTransition(async () => {
+      const result = await markQuincenaPaidAction({
+        organizationId,
+        periodYear: year,
+        periodMonth: month,
+        employees: selectedEmployees.map((e) => ({
+          employeeId: e.id,
+          amount: Number(e.biweekly_advance_amount) || 0,
+        })),
+      })
+      if (result.success) {
+        setConfirmOpen(false)
+      }
+    })
+  }
+
   return (
     <>
-      {/* Barra de selección de mes + exportar */}
+      <PageHeader
+        title="Quincena"
+        description="Empleados con anticipo quincenal recurrente y registro del pago para el banco"
+        action={
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="sm" className="gap-1.5 font-medium cursor-pointer">
+                    Exportar
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onClick={handlePrint} disabled={selectedEmployees.length === 0} className="gap-2 cursor-pointer">
+                  <Printer className="h-4 w-4" />
+                  Imprimir listado
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExport} disabled={validEmployees.length === 0 || exporting} className="gap-2 cursor-pointer">
+                  <Download className="h-4 w-4" />
+                  Exportar TSV ({selectedEmployees.filter((e) => e.national_id?.trim() && e.account_number?.trim()).length})
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Button
+              onClick={requestPay}
+              disabled={selectedEmployees.length === 0}
+              size="sm"
+              className="gap-2 font-medium cursor-pointer"
+            >
+              <Wallet className="h-4 w-4" />
+              Pagar ({selectedEmployees.length})
+            </Button>
+          </div>
+        }
+      />
+
+      {/* Barra de selección de mes + resumen (total y personas al lado de los filtros) */}
       <div className="px-6 py-3 border-b bg-card/75 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
           <select
             value={month}
@@ -171,55 +313,20 @@ export function QuincenaView({ employees, year, month, organization }: QuincenaV
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={handlePrint}
-            disabled={employees.length === 0}
-            variant="outline"
-            size="sm"
-            className="gap-2 font-medium cursor-pointer"
-          >
-            <Printer className="h-4 w-4" />
-            Imprimir
-          </Button>
-          <Button
-            onClick={handleExport}
-            disabled={validEmployees.length === 0 || exporting}
-            size="sm"
-            className="gap-2 font-medium cursor-pointer"
-          >
-            <Download className="h-4 w-4" />
-            Exportar TSV ({validEmployees.length})
-          </Button>
-        </div>
-      </div>
-
-      {/* Tarjetas KPI */}
-      <div className="px-6 py-4 border-b bg-muted/20">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-3.5 rounded-xl border bg-card shadow-2xs space-y-1">
-            <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-              <Users className="h-3.5 w-3.5 text-primary" />
-              Empleados con Anticipo
-            </span>
-            <p className="text-lg font-bold font-mono text-foreground">{employees.length}</p>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Users className="h-3.5 w-3.5" />
+            <span className="font-semibold text-foreground">{selectedIds.size}</span>
+            <span>de {employees.length} seleccionados</span>
           </div>
-          <div className="p-3.5 rounded-xl border bg-primary/10 border-primary/30 shadow-2xs space-y-1">
-            <span className="text-xs font-semibold text-primary flex items-center gap-1.5">
-              <DollarSign className="h-3.5 w-3.5" />
-              Total a Transferir
-            </span>
-            <p className="text-lg font-black font-mono text-primary">${totalAmount.toFixed(2)}</p>
+          <div className="flex items-center gap-1.5 text-xs">
+            <DollarSign className="h-3.5 w-3.5 text-primary" />
+            <span className="font-bold font-mono text-primary">${formatMoney(totalAmount)}</span>
           </div>
           {invalidEmployees.length > 0 && (
-            <div className="p-3.5 rounded-xl border bg-amber-500/10 border-amber-500/30 shadow-2xs space-y-1">
-              <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Con Datos Incompletos
-              </span>
-              <p className="text-lg font-bold font-mono text-amber-700 dark:text-amber-400">
-                {invalidEmployees.length}
-              </p>
+            <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span className="font-semibold">{invalidEmployees.length} incompletos</span>
             </div>
           )}
         </div>
@@ -242,17 +349,31 @@ export function QuincenaView({ employees, year, month, organization }: QuincenaV
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40 text-xs">
-                  <TableHead className="w-[28%] pl-6 font-semibold">Empleado</TableHead>
-                  <TableHead className="w-[16%] font-semibold">Cédula</TableHead>
-                  <TableHead className="w-[16%] font-semibold">Banco</TableHead>
-                  <TableHead className="w-[18%] font-semibold">N° Cuenta</TableHead>
-                  <TableHead className="w-[12%] font-semibold">Monto</TableHead>
-                  <TableHead className="w-[10%] pr-6 text-right font-semibold">Estado</TableHead>
+                  <TableHead className="w-[3%] pl-6">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someSelected
+                      }}
+                      onChange={(e) => toggleAll(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-input cursor-pointer accent-primary"
+                      aria-label="Seleccionar todos los empleados"
+                    />
+                  </TableHead>
+                  <TableHead className="w-[25%] font-semibold">Empleado</TableHead>
+                  <TableHead className="w-[14%] font-semibold">Cédula</TableHead>
+                  <TableHead className="w-[15%] font-semibold">Banco</TableHead>
+                  <TableHead className="w-[16%] font-semibold">N° Cuenta</TableHead>
+                  <TableHead className="w-[10%] font-semibold">Monto</TableHead>
+                  <TableHead className="w-[9%] pr-6 text-right font-semibold">Estado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {employees.map((emp) => {
                   const isInvalid = !emp.national_id?.trim() || !emp.account_number?.trim()
+                  const isPaid = paidSet.has(emp.id)
+                  const isChecked = selectedIds.has(emp.id)
                   const amount = Number(emp.biweekly_advance_amount) || 0
 
                   return (
@@ -264,6 +385,15 @@ export function QuincenaView({ employees, year, month, organization }: QuincenaV
                       )}
                     >
                       <TableCell className="pl-6 py-3.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => toggleOne(emp.id, e.target.checked)}
+                          className="h-3.5 w-3.5 rounded border-input cursor-pointer accent-primary"
+                          aria-label={`Seleccionar a ${emp.full_name}`}
+                        />
+                      </TableCell>
+                      <TableCell className="py-3.5">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8 ring-1 ring-border shrink-0">
                             <AvatarImage src={emp.avatar_url ?? undefined} alt={emp.full_name} />
@@ -308,7 +438,15 @@ export function QuincenaView({ employees, year, month, organization }: QuincenaV
                       </TableCell>
 
                       <TableCell className="pr-6 py-3.5 text-right">
-                        {isInvalid ? (
+                        {isPaid ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-5 px-1.5 font-medium border-emerald-200 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50 gap-1"
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            Pagado
+                          </Badge>
+                        ) : isInvalid ? (
                           <Badge
                             variant="outline"
                             className="text-[10px] h-5 px-1.5 font-medium border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/10"
@@ -318,9 +456,9 @@ export function QuincenaView({ employees, year, month, organization }: QuincenaV
                         ) : (
                           <Badge
                             variant="outline"
-                            className="text-[10px] h-5 px-1.5 font-medium border-emerald-200 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50"
+                            className="text-[10px] h-5 px-1.5 font-medium text-muted-foreground"
                           >
-                            Listo
+                            Pendiente
                           </Badge>
                         )}
                       </TableCell>
@@ -338,6 +476,59 @@ export function QuincenaView({ employees, year, month, organization }: QuincenaV
           </p>
         )}
       </div>
+
+      {/* Confirmación de pago — avisa quién queda fuera si no está marcado */}
+      <Dialog open={confirmOpen} onOpenChange={(open) => (open ? setConfirmOpen(true) : closeConfirm())}>
+        <DialogContent
+          showCloseButton={false}
+          className={cn(
+            'sm:max-w-md transition-[filter] duration-150',
+            closing && 'blur-[6px]'
+          )}
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Wallet className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-base text-foreground">Confirmar pago de quincena</h3>
+                <p className="text-xs text-muted-foreground">
+                  Se marcarán como pagados <strong>{selectedEmployees.length}</strong> anticipos de <strong>{reference}</strong>, por un total de{' '}
+                  <strong className="text-primary">${formatMoney(totalAmount)}</strong>. Esto habilita el descuento correspondiente en el Rol de fin de mes.
+                </p>
+              </div>
+            </div>
+
+            {notSelected.length > 0 && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-xs text-amber-800 dark:text-amber-300 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-semibold">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  {notSelected.length} {notSelected.length === 1 ? 'empleado no se marcará' : 'empleados no se marcarán'} como pagado
+                </div>
+                <p>
+                  No se cargará su anticipo quincenal en este pago ni se descontará en el Rol de fin de mes, hasta que se lo marque:
+                </p>
+                <ul className="list-disc list-inside space-y-0.5 max-h-24 overflow-y-auto">
+                  {notSelected.map((e) => (
+                    <li key={e.id} className="truncate">{e.full_name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={closeConfirm} disabled={isPending} className="cursor-pointer">
+                Cancelar
+              </Button>
+              <Button size="sm" onClick={confirmPay} disabled={isPending || selectedEmployees.length === 0} className="gap-2 cursor-pointer">
+                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+                Confirmar Pago
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

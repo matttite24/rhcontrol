@@ -372,6 +372,18 @@ export type DeductionType =
 
 export type DeductionStatus = 'pendiente' | 'aplicado' | 'anulado'
 
+export interface QuincenaPayment {
+  id: string
+  organization_id: string
+  employee_id: string
+  period_year: number
+  period_month: number
+  amount: number
+  paid_at: string
+  paid_by: string | null
+  created_at: string
+}
+
 export interface Deduction {
   id: string
   organization_id: string

@@ -15,6 +15,7 @@ import {
   ShiftRequest,
   Incident,
   PayrollOvertimeAdjustment,
+  QuincenaPayment,
 } from '@/types/employee'
 import { PayrollEmployeeCalculation } from '@/components/payroll/PayrollDetailModal'
 import { Badge } from '@/components/ui/badge'
@@ -64,6 +65,10 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
       .order('full_name')
     if (report.department) empQuery = empQuery.eq('department', report.department)
 
+    const endDateParts = report.end_date.split('-').map(Number)
+    const periodYear = endDateParts[0]
+    const periodMonth = endDateParts[1]
+
     const [
       { data: employeesData },
       { data: deductionsData },
@@ -71,6 +76,7 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
       { data: shiftsData },
       { data: incidentsData },
       { data: adjustmentsData },
+      { data: quincenaPaymentsData },
     ] = await Promise.all([
       empQuery,
       supabase
@@ -111,6 +117,14 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
         .from('payroll_overtime_adjustments')
         .select('*')
         .eq('payroll_report_id', report.id),
+
+      // Anticipos quincenales marcados como pagados en el mes del corte.
+      supabase
+        .from('quincena_payments')
+        .select('*')
+        .eq('organization_id', currentOrg.id)
+        .eq('period_year', periodYear)
+        .eq('period_month', periodMonth),
     ])
 
     const rawEmployees = (employeesData || []) as (Employee & {
@@ -127,6 +141,7 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
       rawShifts: (shiftsData || []) as ShiftRequest[],
       rawIncidents: (incidentsData || []) as Incident[],
       overtimeAdjustments: (adjustmentsData || []) as PayrollOvertimeAdjustment[],
+      rawQuincenaPayments: (quincenaPaymentsData || []) as QuincenaPayment[],
     })
   } else {
     calculations = (report.snapshot || []) as PayrollEmployeeCalculation[]

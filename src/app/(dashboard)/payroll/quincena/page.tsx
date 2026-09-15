@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
-import { PageHeader } from '@/components/layout/PageHeader'
 import { NoActiveOrg } from '@/components/org/NoActiveOrg'
 import { QuincenaView } from '@/components/payroll/QuincenaView'
 import { Employee } from '@/types/employee'
@@ -35,13 +34,24 @@ export default async function QuincenaPage({ searchParams }: QuincenaPageProps) 
   // depende del mes elegido (ver QuincenaView): el mes solo arma el texto de
   // REFERENCIA del TSV y el nombre del archivo, cualquier empleado activo
   // con biweekly_advance_amount > 0 aparece en la lista.
-  const { data: employeesData } = await supabase
-    .from('employees')
-    .select('id, full_name, national_id, bank_name, bank_code, account_number, payment_type, department, position, avatar_url, status, biweekly_advance_amount')
-    .eq('organization_id', currentOrg.id)
-    .eq('status', 'activo')
-    .gt('biweekly_advance_amount', 0)
-    .order('full_name')
+  const [{ data: employeesData }, { data: paymentsData }] = await Promise.all([
+    supabase
+      .from('employees')
+      .select('id, full_name, national_id, bank_name, bank_code, account_number, payment_type, department, position, avatar_url, status, biweekly_advance_amount')
+      .eq('organization_id', currentOrg.id)
+      .eq('status', 'activo')
+      .gt('biweekly_advance_amount', 0)
+      .order('full_name'),
+
+    // Quiénes ya fueron marcados como pagados en este período (ver
+    // markQuincenaPaidAction) — determina el estado "Pagado" en la tabla.
+    supabase
+      .from('quincena_payments')
+      .select('*')
+      .eq('organization_id', currentOrg.id)
+      .eq('period_year', year)
+      .eq('period_month', month),
+  ])
 
   const employees = (employeesData || []) as Pick<
     Employee,
@@ -59,13 +69,18 @@ export default async function QuincenaPage({ searchParams }: QuincenaPageProps) 
     | 'biweekly_advance_amount'
   >[]
 
+  const paidEmployeeIds = (paymentsData || []).map((p) => p.employee_id as string)
+
   return (
     <div className="flex flex-col flex-1 min-h-screen">
-      <PageHeader
-        title="Quincena"
-        description="Empleados con anticipo quincenal recurrente y exportación del archivo de pago para el banco"
+      <QuincenaView
+        employees={employees}
+        year={year}
+        month={month}
+        organization={currentOrg}
+        organizationId={currentOrg.id}
+        paidEmployeeIds={paidEmployeeIds}
       />
-      <QuincenaView employees={employees} year={year} month={month} organization={currentOrg} />
     </div>
   )
 }

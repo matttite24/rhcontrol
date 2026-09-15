@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { PayrollWorkspaceProvider, PayrollSaveButtonSlot, PayrollTableSlot, PayrollKpiSlot, PayrollPayoutButtonsSlot } from '@/components/payroll/PayrollWorkspace'
 import { calculatePayroll } from '@/lib/payroll/calculate'
-import { Employee, EmployeeSalary, Deduction, ShiftRequest, Incident, EmployeeSchedule } from '@/types/employee'
+import { Employee, EmployeeSalary, Deduction, ShiftRequest, Incident, EmployeeSchedule, QuincenaPayment } from '@/types/employee'
 import Link from 'next/link'
 import { Search, Filter, Calculator, Users, Calendar, FileSpreadsheet, X } from 'lucide-react'
 import { NoActiveOrg } from '@/components/org/NoActiveOrg'
@@ -71,12 +71,20 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       empQuery = empQuery.eq('department', params.department)
     }
 
+    // El anticipo quincenal solo se descuenta en este Rol si fue marcado
+    // como pagado en /payroll/quincena para el mes que cubre `endDate` (ver
+    // quincena_payments y calculatePayroll).
+    const endDateParts = endDate.split('-').map(Number)
+    const periodYear = endDateParts[0]
+    const periodMonth = endDateParts[1]
+
     const [
       { data: employeesData },
       { data: deductionsData },
       { data: recurringData },
       { data: shiftsData },
       { data: incidentsData },
+      { data: quincenaPaymentsData },
     ] = await Promise.all([
       // Empleados con sus conceptos salariales configurados y su horario
       // semanal (necesario para calcular días trabajados en descuentos
@@ -130,6 +138,14 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
         .gte('start_date', startDate)
         .lte('start_date', endDate)
         .order('created_at', { ascending: true }),
+
+      // Anticipos quincenales marcados como pagados en el mes del corte.
+      supabase
+        .from('quincena_payments')
+        .select('*')
+        .eq('organization_id', currentOrg.id)
+        .eq('period_year', periodYear)
+        .eq('period_month', periodMonth),
     ])
 
     const rawEmployees = (employeesData || []) as (Employee & { salaries: EmployeeSalary[]; schedules: EmployeeSchedule[] })[]
@@ -137,6 +153,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
     const rawRecurringRules = (recurringData || []) as Deduction[]
     const rawShifts = (shiftsData || []) as ShiftRequest[]
     const rawIncidents = (incidentsData || []) as Incident[]
+    const rawQuincenaPayments = (quincenaPaymentsData || []) as QuincenaPayment[]
 
     const calculations = calculatePayroll({
       startDate,
@@ -146,6 +163,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       rawRecurringRules,
       rawShifts,
       rawIncidents,
+      rawQuincenaPayments,
     })
 
     // Filtro de búsqueda por texto

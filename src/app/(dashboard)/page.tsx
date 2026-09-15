@@ -212,7 +212,7 @@ export default async function DashboardPage() {
               hint: 'Anticipo acordado',
               icon: DollarSign,
               urgent: daysToQuincena <= 2,
-              href: '/payroll',
+              href: '/payroll/quincena',
             },
             {
               label: 'Cierre de nómina',
@@ -221,7 +221,7 @@ export default async function DashboardPage() {
               hint: `Fin de ${currentMonthName}`,
               icon: TrendingUp,
               urgent: daysToEndOfMonth <= 2,
-              href: '/payroll/history',
+              href: '/payroll',
             },
             {
               label: 'Empleados activos',

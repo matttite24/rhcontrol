@@ -8,6 +8,7 @@ import {
   EmployeeSchedule,
   DayOfWeek,
   PayrollOvertimeAdjustment,
+  QuincenaPayment,
 } from '@/types/employee'
 import { getIncidentCode, getShiftRequestCode, INCIDENT_PREFIX_MAP } from '@/lib/incidents/sequence'
 import { PayrollEmployeeCalculation } from '@/components/payroll/PayrollDetailModal'
@@ -116,6 +117,14 @@ export interface CalculatePayrollInput {
    * nuevo (aún sin borrador guardado, ver /payroll).
    */
   overtimeAdjustments?: PayrollOvertimeAdjustment[]
+  /**
+   * Registros de quincena_payments (ver /payroll/quincena) que cubren el mes
+   * del corte — si un empleado tiene biweekly_advance_amount configurado
+   * pero NO fue marcado como pagado ahí, no se le descuenta en este Rol (ver
+   * biweeklyAdvanceDeducted más abajo): no se descuenta un anticipo que
+   * nunca se transfirió.
+   */
+  rawQuincenaPayments?: QuincenaPayment[]
 }
 
 /**
@@ -133,8 +142,10 @@ export function calculatePayroll({
   rawShifts,
   rawIncidents,
   overtimeAdjustments = [],
+  rawQuincenaPayments = [],
 }: CalculatePayrollInput): PayrollEmployeeCalculation[] {
   const adjustmentsByShiftRequest = new Map(overtimeAdjustments.map((a) => [a.shift_request_id, a]))
+  const quincenaPaidByEmployee = new Set(rawQuincenaPayments.map((p) => p.employee_id))
 
   // Construir mapa de códigos secuenciales deterministas para incidencias y solicitudes
   const incidentCounters: Record<string, number> = {}
@@ -334,10 +345,13 @@ export function calculatePayroll({
     // se paga aparte a mitad de mes, así que se resta del rol MENSUAL para no
     // duplicar el pago. Solo aplica si el corte cubre más de 15 días — un
     // corte quincenal (≤15 días) YA ES el pago del anticipo en sí, restarlo
-    // ahí lo descontaría dos veces.
+    // ahí lo descontaría dos veces. Y solo si el anticipo fue efectivamente
+    // marcado como pagado en /payroll/quincena (quincena_payments) — si no
+    // se pagó, no hay nada que descontar (ver markQuincenaPaidAction).
     const cutDurationDays = daysBetweenIso(startDate, endDate) + 1
     const biweeklyAdvanceAmount = Number(emp.biweekly_advance_amount) || 0
-    const biweeklyAdvanceDeducted = cutDurationDays > 15 ? biweeklyAdvanceAmount : 0
+    const biweeklyAdvanceDeducted =
+      cutDurationDays > 15 && quincenaPaidByEmployee.has(emp.id) ? biweeklyAdvanceAmount : 0
 
     const totalEconomicDeductions =
       empDeductions.reduce((sum, d) => sum + Number(d.amount || 0), 0) + mealDeductions + biweeklyAdvanceDeducted
