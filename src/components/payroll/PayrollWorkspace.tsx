@@ -4,7 +4,11 @@ import React, { createContext, useContext, useState, useMemo, useEffect } from '
 import { PayrollTableView } from './PayrollTableView'
 import { SavePayrollReportButton } from './SavePayrollReportButton'
 import { PayrollEmployeeCalculation } from './PayrollDetailModal'
-import { TrendingUp, TrendingDown, DollarSign, Users } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Users, Printer, Download } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Organization } from '@/types/employee'
+import { buildRolReference, downloadBankPaymentTsv, BankPaymentTsvRow } from '@/lib/payroll/generate-bank-payment-tsv'
+import { printBankPaymentListDocument } from '@/lib/payroll/print-bank-payment-list'
 
 interface PayrollSelectionContextValue {
   selectedIds: Set<string>
@@ -202,5 +206,90 @@ export function PayrollTableSlot({ calculations, startDate, endDate }: PayrollTa
       onToggleOne={toggleOne}
       onToggleAll={toggleAll}
     />
+  )
+}
+
+interface PayrollPayoutButtonsSlotProps {
+  calculations: PayrollEmployeeCalculation[]
+  endDate: string
+  organization?: Partial<Organization> | null
+}
+
+/**
+ * Imprimir listado + Exportar TSV del NETO a pagar de fin de mes — mismo
+ * patrón y mismo formato bancario de 12 columnas que /payroll/quincena (ver
+ * generate-bank-payment-tsv.ts y print-bank-payment-list.ts), aplicado aquí
+ * sobre netSalary en vez del anticipo quincenal. Solo incluye a los
+ * empleados con checkbox marcado (mismo criterio que "Guardar Borrador"),
+ * para que el usuario pueda excluir a alguien del pago antes de exportar.
+ */
+export function PayrollPayoutButtonsSlot({ calculations, endDate, organization }: PayrollPayoutButtonsSlotProps) {
+  const { selectedIds } = usePayrollSelection()
+
+  const selected = useMemo(
+    () => calculations.filter((c) => selectedIds.has(c.employeeId)),
+    [calculations, selectedIds]
+  )
+
+  // Igual que en Quincena: solo va en el archivo bancario quien tiene cédula
+  // y número de cuenta — el resto se marca "incompleto" y se excluye del
+  // TSV (pero sí aparece en el listado imprimible, ver handlePrint).
+  const exportableRows: BankPaymentTsvRow[] = selected
+    .filter((c) => c.nationalId?.trim() && c.accountNumber?.trim())
+    .map((c) => ({
+      fullName: c.fullName,
+      nationalId: c.nationalId!.trim(),
+      bankCode: c.bankCode,
+      accountNumber: c.accountNumber,
+      amount: c.netSalary,
+    }))
+
+  function handleExport() {
+    if (exportableRows.length === 0 || !endDate) return
+    const reference = buildRolReference(endDate)
+    const [y, m] = endDate.split('-')
+    downloadBankPaymentTsv(exportableRows, reference, `rol_${y}_${m}.tsv`)
+  }
+
+  function handlePrint() {
+    if (!endDate) return
+    const reference = buildRolReference(endDate)
+    printBankPaymentListDocument({
+      organization,
+      docTypeTitle: `Listado de Pago — ${reference}`,
+      windowTitle: `Rol de Pagos - ${reference}`,
+      introText: `Listado de sueldos netos a pagar correspondiente a <strong>${reference}</strong>.`,
+      rows: selected.map((c) => ({
+        fullName: c.fullName,
+        nationalId: c.nationalId,
+        accountNumber: c.accountNumber,
+        amount: c.netSalary,
+      })),
+    })
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        onClick={handlePrint}
+        disabled={selected.length === 0}
+        variant="outline"
+        size="sm"
+        className="gap-2 font-medium cursor-pointer"
+      >
+        <Printer className="h-4 w-4" />
+        Imprimir
+      </Button>
+      <Button
+        onClick={handleExport}
+        disabled={exportableRows.length === 0}
+        variant="outline"
+        size="sm"
+        className="gap-2 font-medium cursor-pointer"
+      >
+        <Download className="h-4 w-4" />
+        Exportar TSV ({exportableRows.length})
+      </Button>
+    </div>
   )
 }

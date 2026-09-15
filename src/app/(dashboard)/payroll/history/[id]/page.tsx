@@ -4,6 +4,7 @@ import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PayrollTableView } from '@/components/payroll/PayrollTableView'
 import { GeneratePayrollButton } from '@/components/payroll/GeneratePayrollButton'
+import { PayrollHistoryPayoutButtons } from '@/components/payroll/PayrollHistoryPayoutButtons'
 import { calculatePayroll } from '@/lib/payroll/calculate'
 import {
   PayrollReport,
@@ -92,10 +93,17 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
         .gte('date', report.start_date)
         .lte('date', report.end_date)
         .order('created_at', { ascending: true }),
+      // Vacaciones vive únicamente en shift_requests (Novedades) — ver
+      // createVacationRequestAction y el mismo filtro en /incidents/page.tsx
+      // y /payroll/page.tsx. Excluye filas históricas de tipo
+      // solicitud_vacaciones que hayan quedado en `incidents` de antes de
+      // ese cambio, para no duplicar el mismo período de vacaciones en la
+      // pestaña "Incidencias" del drawer.
       supabase
         .from('incidents')
         .select('*')
         .eq('organization_id', currentOrg.id)
+        .neq('incident_type', 'solicitud_vacaciones')
         .gte('start_date', report.start_date)
         .lte('start_date', report.end_date)
         .order('created_at', { ascending: true }),
@@ -157,6 +165,11 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
               <ArrowLeft className="h-4 w-4" />
               Volver al Historial
             </Link>
+            <PayrollHistoryPayoutButtons
+              calculations={calculations}
+              endDate={report.end_date}
+              organization={currentOrg}
+            />
             {isDraft && <GeneratePayrollButton payrollReportId={report.id} />}
           </div>
         }

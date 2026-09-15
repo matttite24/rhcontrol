@@ -74,6 +74,8 @@ export interface PayrollEmployeeCalculation {
   contractType: string | null
   paymentType: string | null
   bankName: string | null
+  /** Código de banco (2-4 dígitos) para el archivo de pago del banco — ver /payroll/quincena y /payroll (exportar TSV). */
+  bankCode: string | null
   accountNumber: string | null
 
   // Ingresos Base

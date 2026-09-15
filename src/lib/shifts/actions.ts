@@ -471,6 +471,32 @@ export async function createVacationRequestAction(params: CreateVacationRequestP
       }
     }
 
+    // Bloquear duplicados: mismo empleado + mismo rango de fechas ya
+    // registrado como vacaciones pendiente/aprobada. Sin esto, un doble
+    // envío (doble clic, reintento manual tras un error transitorio, etc.)
+    // puede dejar dos filas idénticas en shift_requests — un caso real
+    // detectado en producción (dos VAC-000X con el mismo período y motivo).
+    const { data: existingVacations } = await supabase
+      .from('shift_requests')
+      .select('id, request_type, metadata, status')
+      .eq('organization_id', params.organizationId)
+      .eq('employee_id', params.employeeId)
+      .in('status', ['pendiente', 'aprobado'])
+
+    const hasDuplicate = (existingVacations || []).some((row) => {
+      const isVacationRow =
+        row.request_type === 'solicitud_vacaciones' || row.metadata?.sub_type === 'solicitud_vacaciones'
+      if (!isVacationRow) return false
+      return row.metadata?.start_date === params.startDate && row.metadata?.end_date === params.endDate
+    })
+
+    if (hasDuplicate) {
+      return {
+        success: false,
+        error: 'Ya existe una solicitud de vacaciones pendiente o aprobada para este empleado con las mismas fechas.',
+      }
+    }
+
     // Generar numeración secuencial de 3 letras (VAC-0001) para la organización.
     // Se usa el contador de shift_requests (donde realmente vive el registro
     // canónico) en vez del de incidents — antes ambos podían desincronizarse
@@ -569,23 +595,14 @@ export async function createVacationRequestAction(params: CreateVacationRequestP
       return { success: false, error: insertRes.error.message }
     }
 
-    // Opcionalmente registrar en la tabla incidents para reflejo si corresponde
-    await supabase.from('incidents').insert({
-      organization_id: params.organizationId,
-      employee_id: params.employeeId,
-      incident_type: 'solicitud_vacaciones',
-      title: fullVacTitle,
-      description: params.reason.trim(),
-      start_date: params.startDate,
-      end_date: params.endDate,
-      status: 'pendiente',
-      metadata: {
-        ...params.metadata,
-        document_code: vacCode,
-        sequence_number: vacSeq,
-        shift_request_id: insertRes.data?.id,
-      },
-    })
+    // Ya NO se crea un reflejo en la tabla `incidents`: una solicitud de
+    // vacaciones vive únicamente en shift_requests (Novedades / Control de
+    // Asistencia), que es su lugar natural — es ante todo una ausencia
+    // programada que afecta la jornada, igual que permisos y horas extras,
+    // no documentación administrativa/disciplinaria como actas o llamados de
+    // atención. Antes se duplicaba en ambas listas, generando confusión
+    // sobre "dónde vive" cada solicitud (ver también el filtro en
+    // /incidents/page.tsx que excluye las filas históricas ya creadas).
 
     revalidatePath('/shifts/requests')
     revalidatePath('/shifts/calendar')

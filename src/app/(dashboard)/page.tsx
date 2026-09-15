@@ -77,10 +77,15 @@ export default async function DashboardPage() {
     // del mes, ya filtrados y ordenados en la base — no trae la tabla completa,
     // así que el costo no crece con la cantidad de empleados de la organización.
     supabase.rpc('get_dashboard_employee_insights', { org_id: currentOrg.id }),
+    // Vacaciones vive únicamente en shift_requests (Novedades) — ver
+    // createVacationRequestAction. Se excluye aquí también para no mostrar
+    // filas históricas de solicitud_vacaciones que hayan quedado en
+    // `incidents` de antes de ese cambio.
     supabase
       .from('incidents')
       .select('id, title, incident_type, created_at, employee:employees(full_name, avatar_url, department)')
       .eq('organization_id', currentOrg.id)
+      .neq('incident_type', 'solicitud_vacaciones')
       .order('created_at', { ascending: false })
       .limit(5),
     // Novedades pendientes de aprobación (horas extras, cambios de turno, permisos, vacaciones)

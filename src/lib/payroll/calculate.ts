@@ -434,6 +434,7 @@ export function calculatePayroll({
       contractType: emp.contract_type ?? null,
       paymentType: emp.payment_type ?? null,
       bankName: emp.bank_name ?? null,
+      bankCode: emp.bank_code ?? null,
       accountNumber: emp.account_number ?? null,
 
       baseSalary,

@@ -182,10 +182,16 @@ export async function generatePayrollReportAction(
         .gte('date', startDate)
         .lte('date', endDate)
         .order('created_at', { ascending: true }),
+      // Vacaciones vive únicamente en shift_requests (Novedades) — ver
+      // createVacationRequestAction. Se excluye aquí también: este cálculo
+      // queda congelado en el snapshot final al Generar, así que si no se
+      // filtra aquí, un registro viejo/huérfano de solicitud_vacaciones en
+      // `incidents` quedaría fijo para siempre en el rol cerrado.
       supabase
         .from('incidents')
         .select('*')
         .eq('organization_id', organizationId)
+        .neq('incident_type', 'solicitud_vacaciones')
         .gte('start_date', startDate)
         .lte('start_date', endDate)
         .order('created_at', { ascending: true }),

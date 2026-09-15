@@ -33,7 +33,11 @@ export function SelectIncidentTypeModal({
       </DialogHeader>
 
       <div className="grid grid-cols-1 gap-2.5 pt-2">
-        {INCIDENT_TYPE_OPTIONS.map((item) => {
+        {/* Vacaciones ya no vive en Incidencias (ver /incidents/page.tsx) —
+            se crea desde Novedades (/shifts/requests), que es donde queda
+            reflejada. Ofrecerla aquí llevaría a un resultado que nunca
+            aparece en esta lista. */}
+        {INCIDENT_TYPE_OPTIONS.filter((item) => item.type !== 'solicitud_vacaciones').map((item) => {
           const Icon = item.icon
           const isDisabled = item.disabled
 

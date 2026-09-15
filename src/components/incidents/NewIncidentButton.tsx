@@ -19,14 +19,12 @@ const wizardLoading = (
     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
   </div>
 )
-const loadVacationWizard = () => import('@/components/shifts/VacationWizardModal').then((m) => m.VacationWizardModal)
 const loadWarningWizard = () => import('./WarningWizardModal').then((m) => m.WarningWizardModal)
 const loadNonCompliantWizard = () => import('./NonCompliantWizardModal').then((m) => m.NonCompliantWizardModal)
 const loadSalaryAdvanceWizard = () => import('./SalaryAdvanceWizardModal').then((m) => m.SalaryAdvanceWizardModal)
 const loadDeliveryActWizard = () => import('./DeliveryActWizardModal').then((m) => m.DeliveryActWizardModal)
 const loadWorkCertificateWizard = () => import('./WorkCertificateWizardModal').then((m) => m.WorkCertificateWizardModal)
 
-const VacationWizardModal = dynamic(loadVacationWizard, { loading: () => wizardLoading })
 const WarningWizardModal = dynamic(loadWarningWizard, { loading: () => wizardLoading })
 const NonCompliantWizardModal = dynamic(loadNonCompliantWizard, { loading: () => wizardLoading })
 const SalaryAdvanceWizardModal = dynamic(loadSalaryAdvanceWizard, { loading: () => wizardLoading })
@@ -35,7 +33,6 @@ const WorkCertificateWizardModal = dynamic(loadWorkCertificateWizard, { loading:
 
 type ActiveView =
   | 'select'
-  | 'solicitud_vacaciones'
   | 'llamado_atencion'
   | 'actividad_no_conforme'
   | 'anticipo_sueldo'
@@ -86,11 +83,10 @@ export function NewIncidentButton({
     setDialogOpen(true)
   }, dialogOpen)
 
-  // Precargar los 5 chunks de wizards en paralelo apenas se abre el diálogo
+  // Precargar los chunks de wizards en paralelo apenas se abre el diálogo
   // (sin mostrarlos), para que ya estén en caché cuando el usuario elija uno.
   useEffect(() => {
     if (dialogOpen) {
-      loadVacationWizard()
       loadWarningWizard()
       loadNonCompliantWizard()
       loadSalaryAdvanceWizard()
@@ -102,7 +98,6 @@ export function NewIncidentButton({
   function handleSelectType(type: IncidentType) {
     if (
       type === 'acta_entrega' ||
-      type === 'solicitud_vacaciones' ||
       type === 'llamado_atencion' ||
       type === 'actividad_no_conforme' ||
       type === 'anticipo_sueldo' ||
@@ -179,11 +174,9 @@ export function NewIncidentButton({
           className={cn(
             activeView === 'select'
               ? 'sm:max-w-xl max-h-[85vh] overflow-y-auto'
-              : activeView === 'solicitud_vacaciones'
-                ? 'sm:max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0'
-                : activeView === 'acta_entrega'
-                  ? 'sm:max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden'
-                  : 'sm:max-w-2xl p-0 overflow-hidden border-border/80 gap-0 max-h-[92vh] flex flex-col'
+              : activeView === 'acta_entrega'
+                ? 'sm:max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden'
+                : 'sm:max-w-2xl p-0 overflow-hidden border-border/80 gap-0 max-h-[92vh] flex flex-col'
           )}
           showCloseButton={activeView === 'select'}
         >
@@ -199,17 +192,6 @@ export function NewIncidentButton({
           )}
           {activeView === 'select' && (
             <SelectIncidentTypeModal onSelectType={handleSelectType} />
-          )}
-
-          {activeView === 'solicitud_vacaciones' && (
-            <VacationWizardModal
-              organizationId={organizationId || employees[0]?.organization_id || ''}
-              organizationName={organizationName}
-              employees={employees}
-              onOpenChange={handleWizardOpenChange}
-              onSuccess={() => router.refresh()}
-              onRegisterRequestClose={(fn) => { requestCloseRef.current = fn }}
-            />
           )}
 
           {activeView === 'llamado_atencion' && (

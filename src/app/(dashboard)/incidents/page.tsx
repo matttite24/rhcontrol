@@ -114,6 +114,12 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
     `, { count: 'exact' })
     .eq('organization_id', currentOrg.id)
     .neq('incident_type', 'permiso_laboral')
+    // Vacaciones vive únicamente en Novedades/Control de Asistencia
+    // (shift_requests) — ver createVacationRequestAction. Filas históricas
+    // ya creadas como reflejo en incidents antes de este cambio quedan en la
+    // base de datos, pero dejan de listarse aquí para no duplicar dónde
+    // aparece cada solicitud.
+    .neq('incident_type', 'solicitud_vacaciones')
     .order('created_at', { ascending: false })
     .range(rangeStart, rangeEnd)
 
@@ -187,7 +193,13 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
             name: 'type',
             defaultValue: params.type ?? '',
             placeholder: 'Todos los tipos',
-            options: INCIDENT_TYPE_OPTIONS.map((t) => ({ value: t.type, label: t.title })),
+            // Vacaciones ya no vive en esta lista (ver el .neq de la query
+            // arriba) — se excluye también del filtro para no ofrecer una
+            // opción que nunca devolvería resultados.
+            options: INCIDENT_TYPE_OPTIONS.filter((t) => t.type !== 'solicitud_vacaciones').map((t) => ({
+              value: t.type,
+              label: t.title,
+            })),
           },
           {
             name: 'status',

@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
 import { Input } from '@/components/ui/input'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { PayrollWorkspaceProvider, PayrollSaveButtonSlot, PayrollTableSlot, PayrollKpiSlot } from '@/components/payroll/PayrollWorkspace'
+import { PayrollWorkspaceProvider, PayrollSaveButtonSlot, PayrollTableSlot, PayrollKpiSlot, PayrollPayoutButtonsSlot } from '@/components/payroll/PayrollWorkspace'
 import { calculatePayroll } from '@/lib/payroll/calculate'
 import { Employee, EmployeeSalary, Deduction, ShiftRequest, Incident, EmployeeSchedule } from '@/types/employee'
 import Link from 'next/link'
@@ -112,11 +112,21 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
         .lte('date', endDate)
         .order('created_at', { ascending: true }),
 
-      // Todas las incidencias, anticipos y llamados de atención dentro del rango
+      // Todas las incidencias, anticipos y llamados de atención dentro del rango.
+      // Vacaciones vive únicamente en shift_requests (Novedades) — ver
+      // createVacationRequestAction y el mismo filtro en /incidents/page.tsx.
+      // Filas históricas de tipo solicitud_vacaciones que quedaron en
+      // `incidents` (de antes de ese cambio) se excluyen aquí también, para
+      // no mostrar el mismo período de vacaciones duplicado en la pestaña
+      // "Incidencias" del drawer (una vez desde shift_requests, otra desde
+      // este reflejo viejo — y si el reflejo viejo quedó huérfano o
+      // desactualizado tras editar/borrar la solicitud real, se veía un
+      // "fantasma" que ya no existía en shift_requests).
       supabase
         .from('incidents')
         .select('*')
         .eq('organization_id', currentOrg.id)
+        .neq('incident_type', 'solicitud_vacaciones')
         .gte('start_date', startDate)
         .lte('start_date', endDate)
         .order('created_at', { ascending: true }),
@@ -166,13 +176,22 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
         title="Generar Rol"
         description="Cálculo y consolidación general de haberes, horas extras y deducciones"
         action={
-          <PayrollSaveButtonSlot
-            organizationId={currentOrg.id}
-            startDate={startDate}
-            endDate={endDate}
-            department={params.department}
-            calculations={filteredCalculations}
-          />
+          <div className="flex items-center gap-2">
+            {hasDateRange && (
+              <PayrollPayoutButtonsSlot
+                calculations={filteredCalculations}
+                endDate={endDate}
+                organization={currentOrg}
+              />
+            )}
+            <PayrollSaveButtonSlot
+              organizationId={currentOrg.id}
+              startDate={startDate}
+              endDate={endDate}
+              department={params.department}
+              calculations={filteredCalculations}
+            />
+          </div>
         }
       />
 

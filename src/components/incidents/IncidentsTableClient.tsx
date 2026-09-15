@@ -25,15 +25,31 @@ interface IncidentsTableClientProps {
   organization?: Organization | null
 }
 
-const statusConfig: Record<
-  IncidentStatus,
-  { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
-> = {
-  registrado: { label: 'Registrado', variant: 'default' },
-  aprobado: { label: 'Aprobado', variant: 'secondary' },
-  pendiente: { label: 'Pendiente', variant: 'outline' },
-  rechazado: { label: 'Rechazado', variant: 'destructive' },
-  anulado: { label: 'Anulado', variant: 'destructive' },
+// Mismo patrón de color que SHIFT_REQUEST_STATUS_MAP (src/lib/shifts/constants.ts):
+// antes los estados usaban variant del Badge genérico (outline/secondary), que
+// en este design system no lleva color propio — 'pendiente' y 'aprobado' se
+// veían igual de grises que 'anulado', sin poder distinguirlos a simple vista.
+const statusConfig: Record<IncidentStatus, { label: string; badgeClass: string }> = {
+  registrado: {
+    label: 'Registrado',
+    badgeClass: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/50',
+  },
+  aprobado: {
+    label: 'Aprobado',
+    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50',
+  },
+  pendiente: {
+    label: 'Pendiente',
+    badgeClass: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800/50',
+  },
+  rechazado: {
+    label: 'Rechazado',
+    badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/50',
+  },
+  anulado: {
+    label: 'Anulado',
+    badgeClass: 'text-muted-foreground border-muted-foreground/30 bg-muted/40',
+  },
 }
 
 function getInitials(name: string) {
@@ -141,9 +157,16 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
               const status = statusConfig[inc.status] ?? statusConfig.registrado
               const docCode = incidentCodesMap.get(inc.id) || getIncidentCode(inc)
               const cleanTitle = inc.title.replace(/^\[[A-Z]{3}-\d+\]\s*/, '')
+              const isAnulado = inc.status === 'anulado'
 
               return (
-                <TableRow key={inc.id} className="hover:bg-muted/40 transition-colors text-xs">
+                <TableRow
+                  key={inc.id}
+                  className={cn(
+                    'hover:bg-muted/40 transition-colors text-xs',
+                    isAnulado && 'opacity-50 grayscale-[35%] hover:opacity-70'
+                  )}
+                >
                   {/* 1. Emisión */}
                   <TableCell className="pl-6 py-3.5 text-muted-foreground font-mono text-[11px] whitespace-nowrap">
                     <span className="text-foreground font-medium">
@@ -188,11 +211,11 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
                   {/* 3. Tipo de Incidencia / Asunto */}
                   <TableCell className="py-3.5">
                     <div className="flex items-center gap-2">
-                      <div className={cn('p-1.5 rounded-md border shrink-0', typeMeta?.iconBg)}>
+                      <div className={cn('p-1.5 rounded-md border shrink-0', !isAnulado && typeMeta?.iconBg)}>
                         <TypeIcon className="h-3.5 w-3.5" />
                       </div>
                       <div className="flex flex-col min-w-0">
-                        <span className="font-semibold text-foreground truncate">
+                        <span className={cn('font-semibold text-foreground truncate', isAnulado && 'line-through decoration-1')}>
                           {typeMeta?.title || cleanTitle}
                         </span>
                         {cleanTitle && (
@@ -210,7 +233,10 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
                       <span className="font-mono text-xs font-semibold text-foreground tracking-tight">
                         {docCode}
                       </span>
-                      <Badge variant={status.variant} className="text-[10px] h-5 px-1.5 font-medium border capitalize">
+                      <Badge
+                        variant="outline"
+                        className={cn('text-[10px] h-5 px-1.5 font-medium border capitalize', status.badgeClass)}
+                      >
                         {status.label}
                       </Badge>
                     </div>
