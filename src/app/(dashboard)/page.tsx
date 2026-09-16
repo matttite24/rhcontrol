@@ -22,6 +22,7 @@ import {
   Minus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getEcuadorNow, getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 function getInitials(name: string) {
   return name
@@ -57,14 +58,16 @@ export default async function DashboardPage() {
     ? rawName.split(/[.\s_-]+/)[0].replace(/^\w/, (c) => c.toUpperCase())
     : ''
 
-  const hour = new Date().getHours()
+  // El servidor corre en UTC — usar la hora de Ecuador (UTC-5), no la del
+  // servidor, para el saludo y cualquier cálculo de "hoy" (ver ecuador-time.ts).
+  const hour = getEcuadorNow().getHours()
   const greeting =
     hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches'
 
   // Todas las consultas de esta página en paralelo, cada una acotada a las
   // columnas que realmente se pintan.
-  const todayIso = new Date().toISOString().slice(0, 10)
-  const in30DaysIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const todayIso = getEcuadorTodayIso()
+  const in30DaysIso = new Date(getEcuadorNow().getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   const [
     { data: insightsData },
@@ -161,7 +164,7 @@ export default async function DashboardPage() {
   // probationEmployees / birthdayEmployees / anniversaryEmployees ya llegan
   // filtrados, ordenados y acotados desde el RPC get_dashboard_employee_insights
   // (ver arriba) — el mes/día ya se evaluó en SQL, no hace falta recalcularlo.
-  const today = new Date()
+  const today = getEcuadorNow()
   const currentMonth = today.getMonth() + 1 // 1-12
   const currentDay = today.getDate()
 
