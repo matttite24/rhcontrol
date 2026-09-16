@@ -117,6 +117,8 @@ export function LeavePermissionWizardModal({
     annualLawDays: number
     monthsInPeriod: number
     hasCompletedFirstYear: boolean
+    /** Período vigente (año en curso, aún no cumplido) — para el texto del adelanto. */
+    currentPeriodLabel: string
     loading: boolean
     error?: string
   }>({
@@ -126,8 +128,16 @@ export function LeavePermissionWizardModal({
     annualLawDays: 0,
     monthsInPeriod: 0,
     hasCompletedFirstYear: false,
+    currentPeriodLabel: '—',
     loading: false,
   })
+
+  // Adelanto de días del período vigente (aún no cumplido) con cargo a
+  // vacaciones — mismo patrón que VacationWizardModal, pero con tope el
+  // proporcional YA ACUMULADO a la fecha (no el año completo): así nunca se
+  // autoriza más de lo que el empleado ya generó, relevante si renuncia
+  // antes de cumplir el año y hay que liquidar lo realmente devengado.
+  const [useVacationAdvance, setUseVacationAdvance] = useState(false)
 
   // Horario semanal del empleado seleccionado, para bloquear pedir permiso
   // en un día que ya es libre por horario (no tiene sentido "faltar" a algo
@@ -293,6 +303,7 @@ export function LeavePermissionWizardModal({
     annualLawDays: 0,
     monthsInPeriod: 0,
     hasCompletedFirstYear: false,
+    currentPeriodLabel: '—',
     loading: false,
   }
 
@@ -300,11 +311,13 @@ export function LeavePermissionWizardModal({
   useEffect(() => {
     if (!selectedEmpId) {
       setVacationBalance(EMPTY_BALANCE)
+      setUseVacationAdvance(false)
       return
     }
 
     let isMounted = true
     setVacationBalance((prev) => ({ ...prev, loading: true, error: undefined }))
+    setUseVacationAdvance(false)
 
     getEmployeeVacationBalanceAction(selectedEmpId)
       .then((res) => {
@@ -317,6 +330,7 @@ export function LeavePermissionWizardModal({
             annualLawDays: res.annualLawDays,
             monthsInPeriod: res.monthsInPeriod,
             hasCompletedFirstYear: res.hasCompletedFirstYear,
+            currentPeriodLabel: res.currentPeriodLabel,
             loading: false,
           })
         } else {
@@ -355,12 +369,27 @@ export function LeavePermissionWizardModal({
     }
   }, [selectedEmpId, supabase])
 
+  // El adelanto solo tiene sentido si ya no queda saldo normal tomable, pero
+  // sí hay proporcional acumulado en el período vigente (empleado con <1 año
+  // o que ya agotó el arrastre del período anterior).
+  const canOfferVacationAdvance = vacationBalance.availableDays === 0 && vacationBalance.totalLawDays > 0
+
+  // Con adelanto activo, el tope es el PROPORCIONAL YA ACUMULADO a la fecha
+  // (totalLawDays) menos lo ya usado en el período vigente — nunca el año
+  // completo — para no autorizar más de lo realmente devengado si el
+  // empleado renuncia antes de cumplir el año.
+  const effectiveAvailableDays =
+    useVacationAdvance && canOfferVacationAdvance
+      ? Math.max(0, vacationBalance.totalLawDays - vacationBalance.usedDays)
+      : vacationBalance.availableDays
+
   // Reset del asistente
   function handleReset() {
     setStep(1)
     setSelectedEmpId('')
     setSearchQuery('')
     setVacationBalance(EMPTY_BALANCE)
+    setUseVacationAdvance(false)
     setLeaveUnit('dias')
     const today = new Date().toISOString().split('T')[0]
     setStartDate(today)
@@ -419,9 +448,9 @@ export function LeavePermissionWizardModal({
 
     if (recoveryMethod === 'cargo_vacaciones') {
       const requestedEquivDays = leaveUnit === 'horas' ? calculatedHours / 8 : calculatedDays
-      if (!vacationBalance.loading && requestedEquivDays > vacationBalance.availableDays) {
+      if (!vacationBalance.loading && requestedEquivDays > effectiveAvailableDays) {
         toast.error(
-          `Saldo insuficiente: El empleado solo dispone de ${vacationBalance.availableDays} día(s) de vacaciones, y el permiso requiere ${requestedEquivDays} día(s).`
+          `Saldo insuficiente: El empleado solo dispone de ${effectiveAvailableDays} día(s) de vacaciones, y el permiso requiere ${requestedEquivDays} día(s).`
         )
         return
       }
@@ -452,6 +481,10 @@ export function LeavePermissionWizardModal({
           recoveryMethod === 'reemplazo_personal' ? replacementEmployeeId : undefined,
         replacement_employee_name:
           recoveryMethod === 'reemplazo_personal' ? replacementEmp?.full_name : undefined,
+        is_advance:
+          recoveryMethod === 'cargo_vacaciones' && useVacationAdvance && canOfferVacationAdvance
+            ? true
+            : undefined,
       }
 
       const targetOrgId = organizationId || selectedEmp?.organization_id || ''
@@ -983,7 +1016,7 @@ export function LeavePermissionWizardModal({
                     "p-3.5 rounded-xl border space-y-1.5 transition-all",
                     vacationBalance.loading
                       ? "bg-muted/30 border-border/50 text-muted-foreground"
-                      : (leaveUnit === 'horas' ? calculatedHours / 8 : calculatedDays) > vacationBalance.availableDays
+                      : (leaveUnit === 'horas' ? calculatedHours / 8 : calculatedDays) > effectiveAvailableDays
                       ? "bg-destructive/10 border-destructive/30 text-destructive dark:text-destructive-foreground"
                       : "bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-100"
                   )}>
@@ -998,7 +1031,7 @@ export function LeavePermissionWizardModal({
                         </span>
                       ) : (
                         <span className="text-xs font-mono font-bold">
-                          {vacationBalance.availableDays} día(s) disponibles
+                          {effectiveAvailableDays} día(s) disponibles
                         </span>
                       )}
                     </div>
@@ -1024,17 +1057,48 @@ export function LeavePermissionWizardModal({
                           )}
                         </p>
                         <p className="text-[11px] leading-relaxed opacity-90">
-                          {(leaveUnit === 'horas' ? calculatedHours / 8 : calculatedDays) > vacationBalance.availableDays ? (
+                          {(leaveUnit === 'horas' ? calculatedHours / 8 : calculatedDays) > effectiveAvailableDays ? (
                             <span className="font-semibold text-destructive">
-                              ⚠️ Atención: El permiso requiere {leaveUnit === 'horas' ? `${calculatedHours}h (~${(calculatedHours / 8).toFixed(2)} días)` : `${calculatedDays} día(s)`}, pero el empleado solo tiene {vacationBalance.availableDays} día(s) disponibles.
+                              ⚠️ Atención: El permiso requiere {leaveUnit === 'horas' ? `${calculatedHours}h (~${(calculatedHours / 8).toFixed(2)} días)` : `${calculatedDays} día(s)`}, pero el empleado solo tiene {effectiveAvailableDays} día(s) disponibles.
                             </span>
                           ) : (
                             <span>
                               Se descontarán <strong>{leaveUnit === 'horas' ? `${(calculatedHours / 8).toFixed(2)} día(s) (${calculatedHours}h)` : `${calculatedDays} día(s)`}</strong> del saldo de vacaciones del empleado al registrar o aprobar este permiso.
+                              {useVacationAdvance && canOfferVacationAdvance && ' (incluye adelanto del período vigente)'}
                             </span>
                           )}
                         </p>
                       </>
+                    )}
+
+                    {/* Opción de adelanto: oculta por defecto, solo aparece
+                        cuando el saldo normal ya está en 0 pero hay
+                        proporcional acumulado en el período vigente — mismo
+                        patrón que VacationWizardModal, con tope el
+                        proporcional YA DEVENGADO (no el año completo). */}
+                    {!vacationBalance.loading && canOfferVacationAdvance && (
+                      <label
+                        htmlFor="use_vacation_advance"
+                        className="flex items-start gap-2.5 p-2.5 mt-1 rounded-lg border border-blue-500/30 bg-blue-500/5 cursor-pointer select-none"
+                      >
+                        <input
+                          id="use_vacation_advance"
+                          type="checkbox"
+                          checked={useVacationAdvance}
+                          onChange={(e) => setUseVacationAdvance(e.target.checked)}
+                          className="h-4 w-4 mt-0.5 rounded border-input cursor-pointer accent-blue-600"
+                        />
+                        <div className="text-[11px]">
+                          <span className="font-medium text-foreground">
+                            Adelantar días del período vigente ({vacationBalance.currentPeriodLabel})
+                          </span>
+                          <p className="text-muted-foreground mt-0.5">
+                            El empleado no tiene saldo tomable, pero ya acumuló proporcionalmente{' '}
+                            <strong className="text-foreground">{Math.max(0, vacationBalance.totalLawDays - vacationBalance.usedDays)} día(s)</strong>{' '}
+                            en este período — nunca más de lo realmente devengado a la fecha.
+                          </p>
+                        </div>
+                      </label>
                     )}
                   </div>
                 )}

@@ -96,6 +96,8 @@ export default async function ShiftRequestsPage({ searchParams }: ShiftRequestsP
   if (params.type) {
     if (params.type === 'permiso_laboral') {
       query = query.or('request_type.eq.permiso_laboral,and(request_type.eq.otro,metadata->>sub_type.eq.permiso_laboral)')
+    } else if (params.type === 'incidencia_marcacion') {
+      query = query.or('request_type.eq.incidencia_marcacion,and(request_type.eq.otro,metadata->>sub_type.eq.incidencia_marcacion)')
     } else {
       query = query.eq('request_type', params.type)
     }

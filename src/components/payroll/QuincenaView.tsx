@@ -30,6 +30,8 @@ import {
 } from '@/lib/payroll/generate-quincena-tsv'
 import { printQuincenaDocument } from '@/lib/payroll/print-quincena'
 import { markQuincenaPaidAction } from '@/lib/payroll/quincena-actions'
+import { QuincenaNoticeModal } from '@/components/payroll/QuincenaNoticeModal'
+import { toast } from '@/components/ui/toast'
 import {
   Download,
   Printer,
@@ -41,6 +43,7 @@ import {
   Wallet,
   CheckCircle2,
   Loader2,
+  ImageIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -111,15 +114,22 @@ export function QuincenaView({
   const [exporting, setExporting] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [closing, setClosing] = useState(false)
+  const [noticeModalOpen, setNoticeModalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  // Selección de a quién se le va a pagar/exportar/marcar — por defecto todos
-  // los que ya tienen datos completos, para no obligar a marcar uno por uno.
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    () => new Set(employees.filter((e) => e.national_id?.trim() && e.account_number?.trim()).map((e) => e.id))
-  )
-
   const paidSet = useMemo(() => new Set(paidEmployeeIds), [paidEmployeeIds])
+
+  // Selección de a quién se le va a pagar/exportar/marcar — por defecto todos
+  // los que ya tienen datos completos y AÚN NO están pagados, para no
+  // obligar a marcar uno por uno ni volver a pagar por error a quien ya
+  // recibió su quincena.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(
+      employees
+        .filter((e) => e.national_id?.trim() && e.account_number?.trim() && !paidSet.has(e.id))
+        .map((e) => e.id)
+    )
+  )
 
   function handleMonthChange(newYear: number, newMonth: number) {
     router.push(`/payroll/quincena?year=${newYear}&month=${newMonth}`)
@@ -155,6 +165,7 @@ export function QuincenaView({
   const reference = buildQuincenaReference(year, month)
 
   function toggleOne(id: string, checked: boolean) {
+    if (paidSet.has(id)) return
     setSelectedIds((prev) => {
       const next = new Set(prev)
       if (checked) next.add(id)
@@ -163,11 +174,15 @@ export function QuincenaView({
     })
   }
 
+  // Solo los empleados AÚN NO pagados son seleccionables — "Seleccionar
+  // todos" nunca debe volver a marcar para pago a alguien ya pagado.
+  const payableEmployees = useMemo(() => employees.filter((e) => !paidSet.has(e.id)), [employees, paidSet])
+
   function toggleAll(checked: boolean) {
-    setSelectedIds(checked ? new Set(employees.map((e) => e.id)) : new Set())
+    setSelectedIds(checked ? new Set(payableEmployees.map((e) => e.id)) : new Set())
   }
 
-  const allSelected = employees.length > 0 && selectedIds.size === employees.length
+  const allSelected = payableEmployees.length > 0 && selectedIds.size === payableEmployees.length
   const someSelected = selectedIds.size > 0 && !allSelected
 
   async function handleExport() {
@@ -234,6 +249,8 @@ export function QuincenaView({
       })
       if (result.success) {
         setConfirmOpen(false)
+      } else {
+        toast.error(result.error || 'No se pudo registrar el pago. Intenta de nuevo.')
       }
     })
   }
@@ -254,7 +271,11 @@ export function QuincenaView({
                   </Button>
                 }
               />
-              <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => setNoticeModalOpen(true)} className="gap-2 cursor-pointer">
+                  <ImageIcon className="h-4 w-4 text-emerald-500" />
+                  Exportar Png
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handlePrint} disabled={selectedEmployees.length === 0} className="gap-2 cursor-pointer">
                   <Printer className="h-4 w-4" />
                   Imprimir listado
@@ -268,12 +289,13 @@ export function QuincenaView({
 
             <Button
               onClick={requestPay}
-              disabled={selectedEmployees.length === 0}
+              disabled={selectedEmployees.length === 0 || payableEmployees.length === 0}
               size="sm"
               className="gap-2 font-medium cursor-pointer"
+              title={payableEmployees.length === 0 ? 'Todos los empleados ya fueron pagados en este período' : undefined}
             >
               <Wallet className="h-4 w-4" />
-              Pagar ({selectedEmployees.length})
+              {payableEmployees.length === 0 ? 'Todos pagados' : `Pagar (${selectedEmployees.length})`}
             </Button>
           </div>
         }
@@ -388,9 +410,11 @@ export function QuincenaView({
                         <input
                           type="checkbox"
                           checked={isChecked}
+                          disabled={isPaid}
                           onChange={(e) => toggleOne(emp.id, e.target.checked)}
-                          className="h-3.5 w-3.5 rounded border-input cursor-pointer accent-primary"
-                          aria-label={`Seleccionar a ${emp.full_name}`}
+                          className="h-3.5 w-3.5 rounded border-input cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
+                          title={isPaid ? 'Ya fue pagado en este período' : undefined}
+                          aria-label={isPaid ? `${emp.full_name} ya fue pagado` : `Seleccionar a ${emp.full_name}`}
                         />
                       </TableCell>
                       <TableCell className="py-3.5">
@@ -529,6 +553,15 @@ export function QuincenaView({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal para generar y previsualizar imagen PNG de quincena para WhatsApp */}
+      <QuincenaNoticeModal
+        open={noticeModalOpen}
+        onOpenChange={setNoticeModalOpen}
+        organization={organization}
+        year={year}
+        month={month}
+      />
     </>
   )
 }

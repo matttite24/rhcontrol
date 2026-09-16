@@ -18,7 +18,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { ShiftRequestDetailModal } from './ShiftRequestDetailModal'
 import { NewShiftRequestButton } from './NewShiftRequestButton'
 import { toast } from '@/components/ui/toast'
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Moon, Filter, Check, ChevronDown, RefreshCw, Palmtree, CalendarSearch, Info, UserX, CalendarOff } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Moon, Filter, Check, ChevronDown, RefreshCw, Palmtree, CalendarSearch, Info, UserX, CalendarOff, Fingerprint } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getInitials } from '@/lib/shifts/format'
 
@@ -191,12 +191,30 @@ function getVacationRange(r: ShiftRequest): { start: string; end: string } {
   return { start, end: start }
 }
 
+/**
+ * Rango [inicio, fin] (ISO) que cubre un permiso laboral por días. A
+ * diferencia de vacaciones, `metadata.end_date` en permisos es el día de
+ * REINCORPORACIÓN (no un día de ausencia), así que el último día ausente es
+ * `end_date - 1`. `requested_days` ya refleja esa resta (ver
+ * LeavePermissionWizardModal `calculatedDays`), por lo que el rango de
+ * ausencia siempre se deriva de él. Los permisos por horas ocupan un único
+ * día exacto.
+ */
+function getLeavePermitRange(r: ShiftRequest): { start: string; end: string } {
+  const start = r.metadata?.start_date || r.date
+  const days = Number(r.metadata?.requested_days) || 0
+  if (r.metadata?.leave_unit === 'dias' && days > 1) return { start, end: addDaysToIso(start, days - 1) }
+  return { start, end: start }
+}
+
 interface EmployeeDateRequestIndex {
   overtime: ShiftRequest[]
   scheduleChanges: ShiftRequest[]
   leavePermits: ShiftRequest[]
   /** Solicitudes de vacaciones cuyo rango podría cubrir cualquier fecha (no indexables por día exacto) */
   vacations: ShiftRequest[]
+  /** Incidencias de marcación biométrica (informativas, siempre un único día exacto). */
+  biometricIncidents: ShiftRequest[]
 }
 
 /**
@@ -214,7 +232,7 @@ function buildRequestIndex(requests: ShiftRequest[]) {
   function getOrCreate(key: string): EmployeeDateRequestIndex {
     let entry = byEmployeeDate.get(key)
     if (!entry) {
-      entry = { overtime: [], scheduleChanges: [], leavePermits: [], vacations: [] }
+      entry = { overtime: [], scheduleChanges: [], leavePermits: [], vacations: [], biometricIncidents: [] }
       byEmployeeDate.set(key, entry)
     }
     return entry
@@ -225,6 +243,7 @@ function buildRequestIndex(requests: ShiftRequest[]) {
     const isScheduleChange = r.request_type === 'cambio_horario' || r.metadata?.sub_type === 'cambio_horario'
     const isVacation = r.request_type === 'solicitud_vacaciones' || r.metadata?.sub_type === 'solicitud_vacaciones'
     const isLeavePermit = r.request_type === 'permiso_laboral' || r.metadata?.sub_type === 'permiso_laboral'
+    const isBiometricIncident = r.request_type === 'incidencia_marcacion' || r.metadata?.sub_type === 'incidencia_marcacion'
 
     if (isOvertime && r.date) {
       getOrCreate(`${r.employee_id}|${r.date}`).overtime.push(r)
@@ -240,16 +259,27 @@ function buildRequestIndex(requests: ShiftRequest[]) {
       }
     }
 
-    // Un permiso laboral solo tiene una fecha exacta (a diferencia de las
-    // vacaciones, que cubren un rango) — se indexa igual que horas extra.
+    // Un permiso laboral por días puede cubrir un rango (start_date..end_date
+    // o requested_days); se indexa en cada fecha del rango igual que
+    // vacaciones. Los permisos por horas ocupan un único día exacto.
     if (isLeavePermit && r.date) {
-      getOrCreate(`${r.employee_id}|${r.date}`).leavePermits.push(r)
+      const { start, end } = getLeavePermitRange(r)
+      let cursor = start
+      while (cursor <= end) {
+        getOrCreate(`${r.employee_id}|${cursor}`).leavePermits.push(r)
+        if (cursor === end) break
+        cursor = addDaysToIso(cursor, 1)
+      }
     }
 
     if (isVacation) {
       const list = vacationsByEmployee.get(r.employee_id) || []
       list.push(r)
       vacationsByEmployee.set(r.employee_id, list)
+    }
+
+    if (isBiometricIncident && r.date) {
+      getOrCreate(`${r.employee_id}|${r.date}`).biometricIncidents.push(r)
     }
   }
 
@@ -641,6 +671,10 @@ export function ShiftCalendarView({
                     <span className="text-muted-foreground">Permiso laboral (aprobado / pendiente)</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Fingerprint className="h-3 w-3 text-rose-600 dark:text-rose-400 shrink-0" />
+                    <span className="text-muted-foreground">Marcación biométrica (error justificado)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <Clock className="h-3 w-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <span className="text-muted-foreground">Horas suplementarias (50% recargo)</span>
                   </div>
@@ -888,6 +922,7 @@ export function ShiftCalendarView({
                         const scheduleChangeReq = dayEntry?.scheduleChanges[0]
                         const approvedLeavePermit = dayEntry?.leavePermits.find((r) => r.status === 'aprobado')
                         const pendingLeavePermit = dayEntry?.leavePermits.find((r) => r.status === 'pendiente')
+                        const biometricIncident = dayEntry?.biometricIncidents.find((r) => r.status === 'aprobado')
 
                         const dayChangeDetail: DayChangeDetail | undefined = scheduleChangeReq?.metadata?.day_changes?.find(
                           (dc: DayChangeDetail) => dc.date === isoDate
@@ -1026,6 +1061,19 @@ export function ShiftCalendarView({
                                   </button>
                                 )}
 
+                                {/* Indicador de Marcación Biométrica (informativo) */}
+                                {biometricIncident && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenRequest(biometricIncident)}
+                                    className="flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs"
+                                    title="Marcación Biométrica • Clic para ver"
+                                  >
+                                    <Fingerprint className="h-2.5 w-2.5" />
+                                    <span>Marcación</span>
+                                  </button>
+                                )}
+
                                 {/* Icono si tiene horas extras aprobadas en día libre */}
                                 {approvedOvertime && (
                                   <button
@@ -1056,7 +1104,8 @@ export function ShiftCalendarView({
                               isToday && "bg-primary/10",
                               isHolidayDate && !isToday && "bg-rose-500/5",
                               isWeekend && !isToday && !isHolidayDate && "bg-slate-500/[0.06] dark:bg-slate-400/[0.07]",
-                              scheduleChangeReq && isScheduleChangeApproved && "bg-blue-500/5"
+                              scheduleChangeReq && isScheduleChangeApproved && "bg-blue-500/5",
+                              vacationReq && isVacationPending && "bg-slate-500/10 dark:bg-slate-400/10"
                             )}
                           >
                             <div className="flex flex-col items-center justify-center gap-1 w-full">
@@ -1117,6 +1166,32 @@ export function ShiftCalendarView({
                                 >
                                   <CalendarOff className="h-2.5 w-2.5" />
                                   <span>{approvedLeavePermit ? 'Permiso' : 'Permiso Pend.'}</span>
+                                </button>
+                              )}
+
+                              {/* Indicador de Marcación Biométrica (informativo) */}
+                              {biometricIncident && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenRequest(biometricIncident)}
+                                  className="flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs"
+                                  title="Marcación Biométrica • Clic para ver"
+                                >
+                                  <Fingerprint className="h-2.5 w-2.5" />
+                                  <span>Marcación</span>
+                                </button>
+                              )}
+
+                              {/* Indicador de Vacaciones pendientes (aprobadas ya reemplazan la celda entera arriba) */}
+                              {vacationReq && isVacationPending && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenRequest(vacationReq)}
+                                  className="flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] bg-slate-500/15 border border-slate-500/30 text-slate-600 dark:text-slate-300 transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs"
+                                  title="Vacaciones pendientes de aprobación • Clic para ver"
+                                >
+                                  <Palmtree className="h-2.5 w-2.5" />
+                                  <span>Vacac. Pend.</span>
                                 </button>
                               )}
 

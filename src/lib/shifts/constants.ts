@@ -1,5 +1,5 @@
 import { ShiftRequestType } from '@/types/employee'
-import { CalendarOff, Timer, RefreshCw, Palmtree, FileText } from 'lucide-react'
+import { CalendarOff, Timer, RefreshCw, Palmtree, FileText, Fingerprint } from 'lucide-react'
 import React from 'react'
 
 export interface ShiftRequestTypeOption {
@@ -44,6 +44,14 @@ export const SHIFT_REQUEST_TYPE_OPTIONS: ShiftRequestTypeOption[] = [
     icon: Palmtree,
     iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
     accentHex: '#059669',
+  },
+  {
+    type: 'incidencia_marcacion',
+    title: 'Marcación Biométrica',
+    description: 'Constancia informativa para justificar errores del biométrico: sin marcación, doble marcación o fuera de tiempo.',
+    icon: Fingerprint,
+    iconBg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
+    accentHex: '#e11d48',
   },
 ]
 

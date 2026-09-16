@@ -935,3 +935,143 @@ export async function createWorkCertificateAction(
   }
 }
 
+export interface CreateTrainingActParams {
+  organizationId: string
+  employeeId: string
+  trainingDate: string
+  trainerName: string
+  topicCategory: string
+  topicLabel: string
+  description: string
+  durationHours: number
+  metadata?: Record<string, any>
+}
+
+/**
+ * Genera y registra un Acta de Capacitación: constancia de que el
+ * colaborador recibió capacitación en un tema/área determinada, con
+ * capacitador, descripción y duración. Documento informativo, sin flujo de
+ * aprobación (status='registrado' directo), con firma de recibido del
+ * colaborador en el documento impreso.
+ */
+export async function createTrainingActAction(params: CreateTrainingActParams): Promise<{
+  success: boolean
+  data?: Incident
+  error?: string
+}> {
+  try {
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { success: false, error: 'No autenticado. Inicia sesión nuevamente.' }
+    }
+
+    // Generar numeración secuencial de 3 letras (CAP-0001) para la organización
+    const { code, sequenceNumber } = await getNextIncidentSequenceCode(
+      supabase,
+      params.organizationId,
+      'acta_capacitacion'
+    )
+
+    const fullTitle = `[${code}] Acta de Capacitación: ${params.topicLabel}`
+
+    const combinedMetadata = {
+      ...(params.metadata || {}),
+      document_code: code,
+      sequence_number: sequenceNumber,
+      issue_date: params.trainingDate,
+      trainer_name: params.trainerName.trim(),
+      topic_category: params.topicCategory,
+      topic_label: params.topicLabel.trim(),
+      duration_hours: params.durationHours,
+      created_by: user.email || user.id,
+    }
+
+    let insertRes = await supabase
+      .from('incidents')
+      .insert({
+        organization_id: params.organizationId,
+        employee_id: params.employeeId,
+        incident_type: 'acta_capacitacion',
+        title: fullTitle,
+        description: params.description.trim(),
+        start_date: params.trainingDate,
+        end_date: null,
+        amount: null,
+        status: 'registrado',
+        metadata: combinedMetadata,
+      })
+      .select(
+        `
+        *,
+        employee:employees (
+          id,
+          full_name,
+          national_id,
+          department,
+          position,
+          avatar_url
+        )
+      `
+      )
+      .single()
+
+    // Si la BD remota de Supabase aún no tiene el check constraint actualizado
+    // con 'acta_capacitacion' (ver migración add_acta_capacitacion_incident_type.sql)
+    if (insertRes.error) {
+      console.warn('Fallo intento directo incident_type=acta_capacitacion, reintentando con fallback incident_type=otro:', insertRes.error.message)
+
+      insertRes = await supabase
+        .from('incidents')
+        .insert({
+          organization_id: params.organizationId,
+          employee_id: params.employeeId,
+          incident_type: 'otro',
+          title: fullTitle,
+          description: params.description.trim(),
+          start_date: params.trainingDate,
+          end_date: null,
+          amount: null,
+          status: 'registrado',
+          metadata: { ...combinedMetadata, sub_type: 'acta_capacitacion' },
+        })
+        .select(
+          `
+          *,
+          employee:employees (
+            id,
+            full_name,
+            national_id,
+            department,
+            position,
+            avatar_url
+          )
+        `
+        )
+        .single()
+    }
+
+    if (insertRes.error) {
+      console.error('Error insertando acta de capacitación:', insertRes.error)
+      return { success: false, error: insertRes.error.message }
+    }
+
+    const incident = insertRes.data
+
+    revalidatePath('/incidents')
+    revalidatePath(`/employees/${params.employeeId}`)
+
+    return { success: true, data: incident as Incident }
+  } catch (err: any) {
+    console.error('Catch en createTrainingActAction:', err)
+    return {
+      success: false,
+      error: err?.message || 'Error inesperado al generar el acta de capacitación.',
+    }
+  }
+}
+

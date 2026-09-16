@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getEcuadorNow, getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
+import { BirthdayActionItem } from '@/components/dashboard/BirthdayActionItem'
 
 function getInitials(name: string) {
   return name
@@ -539,45 +540,15 @@ export default async function DashboardPage() {
                   const isTodayBday = day === currentDay
 
                   return (
-                    <div
+                    <BirthdayActionItem
                       key={emp.id}
-                      className={cn(
-                        "flex items-center justify-between p-2.5 rounded-xl transition-colors text-xs",
-                        isTodayBday
-                          ? "bg-rose-500/10 font-semibold"
-                          : "hover:bg-muted/40"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8 ring-1 ring-border shrink-0">
-                          <AvatarImage src={emp.avatar_url ?? undefined} alt={emp.full_name} />
-                          <AvatarFallback className="text-[10px] font-semibold">
-                            {getInitials(emp.full_name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-semibold text-foreground truncate max-w-[170px]">
-                            {emp.full_name}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground truncate max-w-[170px]">
-                            {emp.position || emp.department || 'Empleado'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        {isTodayBday ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500 text-white">
-                            <Sparkles className="h-3 w-3" />
-                            ¡Hoy!
-                          </span>
-                        ) : (
-                          <span className="font-mono text-xs text-muted-foreground font-semibold">
-                            {day} de {currentMonthName}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                      employee={emp}
+                      isTodayBday={isTodayBday}
+                      day={day}
+                      currentMonthName={currentMonthName}
+                      orgName={currentOrg.name}
+                      logoUrl={currentOrg.logo_url}
+                    />
                   )
                 })}
               </div>

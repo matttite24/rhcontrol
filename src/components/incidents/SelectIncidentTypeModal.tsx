@@ -36,8 +36,9 @@ export function SelectIncidentTypeModal({
         {/* Vacaciones ya no vive en Incidencias (ver /incidents/page.tsx) —
             se crea desde Novedades (/shifts/requests), que es donde queda
             reflejada. Ofrecerla aquí llevaría a un resultado que nunca
-            aparece en esta lista. */}
-        {INCIDENT_TYPE_OPTIONS.filter((item) => item.type !== 'solicitud_vacaciones').map((item) => {
+            aparece en esta lista. Permisos Médicos (incapacidad) aún no está
+            implementado — se oculta del selector hasta que se trabaje. */}
+        {INCIDENT_TYPE_OPTIONS.filter((item) => item.type !== 'solicitud_vacaciones' && item.type !== 'incapacidad').map((item) => {
           const Icon = item.icon
           const isDisabled = item.disabled
 

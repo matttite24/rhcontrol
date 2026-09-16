@@ -36,6 +36,7 @@ import {
   X,
   PackageCheck,
   FileBadge,
+  GraduationCap,
 } from 'lucide-react'
 import { printLeavePermissionDocument } from '@/lib/shifts/print-leave-permission'
 import { printWarningLetterDocument } from '@/lib/incidents/print-warning'
@@ -43,6 +44,7 @@ import { printNonCompliantDocument } from '@/lib/incidents/print-non-compliant'
 import { printSalaryAdvanceDocument } from '@/lib/incidents/print-salary-advance'
 import { printDeliveryActDocument } from '@/lib/incidents/print-delivery-act'
 import { printWorkCertificateDocument } from '@/lib/incidents/print-work-certificate'
+import { printTrainingActDocument } from '@/lib/incidents/print-training-act'
 import { cancelIncidentAction, approveSalaryAdvanceAction } from '@/lib/incidents/actions'
 import { getIncidentCode } from '@/lib/incidents/sequence'
 import { cn } from '@/lib/utils'
@@ -154,6 +156,8 @@ export function IncidentDetailModal({
     incident.incident_type === 'incapacidad' || incident.metadata?.sub_type === 'incapacidad'
   const isWorkCertificate =
     incident.incident_type === 'certificado_trabajo' || incident.metadata?.sub_type === 'certificado_trabajo'
+  const isTrainingAct =
+    incident.incident_type === 'acta_capacitacion' || incident.metadata?.sub_type === 'acta_capacitacion'
 
   const metadata = (incident.metadata || {}) as LeaveIncidentMetadata
 
@@ -506,6 +510,22 @@ export function IncidentDetailModal({
       if (!opened) {
         toast.error('El navegador bloqueó la ventana del certificado. Permite ventanas emergentes para este sitio e inténtalo de nuevo.')
       }
+    } else if (isTrainingAct) {
+      const incMeta = (incident.metadata || {}) as any
+      printTrainingActDocument({
+        organization: organization || { name: 'RH Garden' },
+        organizationName: organization?.name || 'RH Garden',
+        employeeName: incident.employee?.full_name || 'Empleado',
+        nationalId: incMeta.national_id || incident.employee?.national_id || '',
+        department: incMeta.department || incident.employee?.department || '—',
+        position: incMeta.position || incident.employee?.position || '—',
+        trainingDate: incident.start_date || incMeta.issue_date || incident.created_at?.split('T')[0] || '',
+        trainerName: incMeta.trainer_name || '—',
+        topicLabel: incMeta.topic_label || cleanIncidentTitle,
+        description: incident.description || '',
+        durationHours: Number(incMeta.duration_hours) || 1,
+        documentCode: docCode,
+      })
     } else {
       window.print()
     }
@@ -584,6 +604,15 @@ export function IncidentDetailModal({
         badgeBg: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30',
         accentText: 'text-cyan-600 dark:text-cyan-400',
         primaryBtn: 'bg-cyan-600 hover:bg-cyan-700 text-white',
+      }
+    : isTrainingAct
+    ? {
+        title: 'Acta de Capacitación',
+        icon: GraduationCap,
+        headerBg: 'bg-fuchsia-500/10 border-fuchsia-500/20',
+        badgeBg: 'bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300 border-fuchsia-500/30',
+        accentText: 'text-fuchsia-600 dark:text-fuchsia-400',
+        primaryBtn: 'bg-fuchsia-600 hover:bg-fuchsia-700 text-white',
       }
     : {
         title: cleanIncidentTitle || 'Detalle de Incidencia',

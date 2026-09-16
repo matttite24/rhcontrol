@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { ShiftRequest, LeaveIncidentMetadata, ScheduleChangeMetadata, VacationRequestMetadata } from '@/types/employee'
+import { ShiftRequest, LeaveIncidentMetadata, ScheduleChangeMetadata, VacationRequestMetadata, BiometricIncidentMetadata } from '@/types/employee'
 import { revalidatePath } from 'next/cache'
 import { getNextShiftRequestSequenceCode } from '@/lib/incidents/sequence'
 import { normalizeMinuteRange } from '@/lib/shifts/time'
@@ -156,10 +156,19 @@ export async function createLeavePermissionAction(params: CreateLeavePermissionP
           ? (params.hours || 0) / 8
           : Number(params.metadata?.requested_days || (params.hours ? params.hours / 8 : 1))
 
-      if (requestedDays > balanceRes.availableDays) {
+      // Si el wizard autorizó un adelanto de días del período vigente (ver
+      // checkbox "Adelantar días" en LeavePermissionWizardModal), el tope
+      // pasa a ser el proporcional YA ACUMULADO a la fecha (totalLawDays)
+      // menos lo ya usado — no el saldo normal, que siempre es 0 en este
+      // caso. Nunca se valida contra el año completo, solo lo devengado.
+      const effectiveAvailableDays = params.metadata?.is_advance
+        ? Math.max(0, balanceRes.totalLawDays - balanceRes.usedDays)
+        : balanceRes.availableDays
+
+      if (requestedDays > effectiveAvailableDays) {
         return {
           success: false,
-          error: `Saldo insuficiente de vacaciones: El empleado dispone de ${balanceRes.availableDays} día(s), pero el permiso requiere ${requestedDays} día(s).`,
+          error: `Saldo insuficiente de vacaciones: El empleado dispone de ${effectiveAvailableDays} día(s), pero el permiso requiere ${requestedDays} día(s).`,
         }
       }
     }
@@ -251,6 +260,132 @@ export async function createLeavePermissionAction(params: CreateLeavePermissionP
   } catch (err: any) {
     console.error('Catch en createLeavePermissionAction:', err)
     return { success: false, error: err?.message || 'Error inesperado al crear el permiso' }
+  }
+}
+
+export interface CreateBiometricIncidentParams {
+  organizationId: string
+  employeeId: string
+  title: string
+  reason: string
+  date: string
+  metadata: BiometricIncidentMetadata
+}
+
+/**
+ * Registra una constancia informativa de incidencia de marcación biométrica
+ * (sin marcación, doble marcación o marcación fuera de tiempo). No requiere
+ * aprobación: se crea directamente con status='aprobado', ya que solo sirve
+ * como justificación documental al revisar el biométrico.
+ */
+export async function createBiometricIncidentAction(params: CreateBiometricIncidentParams): Promise<{
+  success: boolean
+  data?: ShiftRequest
+  error?: string
+}> {
+  try {
+    const supabase = await createClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { success: false, error: 'No autenticado. Inicia sesión nuevamente.' }
+    }
+
+    const { code: imbCode, sequenceNumber: imbSeq } = await getNextShiftRequestSequenceCode(
+      supabase,
+      params.organizationId,
+      'incidencia_marcacion'
+    )
+
+    const fullTitle = params.title.startsWith('[') ? params.title : `[${imbCode}] ${params.title}`
+
+    let insertRes = await supabase
+      .from('shift_requests')
+      .insert({
+        organization_id: params.organizationId,
+        employee_id: params.employeeId,
+        request_type: 'incidencia_marcacion',
+        title: fullTitle,
+        reason: params.reason.trim(),
+        date: params.date,
+        start_time: null,
+        end_time: null,
+        hours: null,
+        status: 'aprobado',
+        metadata: {
+          ...params.metadata,
+          document_code: imbCode,
+          sequence_number: imbSeq,
+        },
+      })
+      .select(
+        `
+        *,
+        employee:employees (
+          id,
+          full_name,
+          national_id,
+          department,
+          position,
+          avatar_url
+        )
+      `
+      )
+      .single()
+
+    // Si la BD tiene check constraint de Postgres que aún no acepta este tipo.
+    if (insertRes.error) {
+      console.warn('Fallo intento directo incidencia_marcacion:', insertRes.error.message)
+
+      insertRes = await supabase
+        .from('shift_requests')
+        .insert({
+          organization_id: params.organizationId,
+          employee_id: params.employeeId,
+          request_type: 'otro',
+          title: params.title,
+          reason: params.reason.trim(),
+          date: params.date,
+          start_time: null,
+          end_time: null,
+          hours: null,
+          status: 'aprobado',
+          metadata: {
+            ...params.metadata,
+            sub_type: 'incidencia_marcacion',
+            document_code: imbCode,
+            sequence_number: imbSeq,
+          },
+        })
+        .select(
+          `
+          *,
+          employee:employees (
+            id,
+            full_name,
+            national_id,
+            department,
+            position,
+            avatar_url
+          )
+        `
+        )
+        .single()
+    }
+
+    if (insertRes.error) {
+      console.error('Error insertando en shift_requests:', insertRes.error)
+      return { success: false, error: insertRes.error.message }
+    }
+
+    revalidatePath('/shifts/requests')
+    return { success: true, data: insertRes.data as ShiftRequest }
+  } catch (err: any) {
+    console.error('Catch en createBiometricIncidentAction:', err)
+    return { success: false, error: err?.message || 'Error inesperado al crear la incidencia de marcación' }
   }
 }
 

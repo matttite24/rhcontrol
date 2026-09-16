@@ -7,6 +7,7 @@ import {
   HeartPulse,
   PackageCheck,
   FileBadge,
+  GraduationCap,
 } from 'lucide-react'
 import React from 'react'
 
@@ -90,6 +91,16 @@ export const INCIDENT_TYPE_OPTIONS: IncidentTypeOption[] = [
     icon: FileBadge,
     badgeColor: 'text-cyan-600 dark:text-cyan-400',
     iconBg: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
+    disabled: false,
+  },
+  {
+    type: 'acta_capacitacion',
+    accentHex: '#c026d3',
+    title: 'Acta de Capacitación',
+    description: 'Constancia de que el colaborador recibió capacitación en un tema o área determinada, con firma de recibido.',
+    icon: GraduationCap,
+    badgeColor: 'text-fuchsia-600 dark:text-fuchsia-400',
+    iconBg: 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-500/20',
     disabled: false,
   },
 ]
@@ -281,6 +292,52 @@ export interface DeliveryAssetItem {
   condition: 'nuevo' | 'bueno' | 'regular'
   serialOrCode?: string
 }
+
+// Áreas/temas sugeridos de capacitación (acta_capacitacion) — solo ejemplos
+// para agilizar el formulario; el campo permite texto libre.
+export interface TrainingTopicCategory {
+  id: string
+  label: string
+  examples: string
+}
+
+export const TRAINING_TOPIC_CATEGORIES: TrainingTopicCategory[] = [
+  {
+    id: 'seguridad_industrial',
+    label: 'Seguridad Industrial y Salud Ocupacional',
+    examples: 'Uso de EPP, prevención de riesgos, manejo de extintores, primeros auxilios',
+  },
+  {
+    id: 'atencion_cliente',
+    label: 'Atención al Cliente y Servicio',
+    examples: 'Protocolo de atención, manejo de quejas, ventas, comunicación efectiva',
+  },
+  {
+    id: 'procesos_operativos',
+    label: 'Procesos Operativos y Técnicos',
+    examples: 'Manejo de maquinaria, procedimientos de producción, control de calidad',
+  },
+  {
+    id: 'induccion',
+    label: 'Inducción y Reglamento Interno',
+    examples: 'Inducción a nuevo personal, políticas internas, código de conducta',
+  },
+  {
+    id: 'sistemas_tecnologia',
+    label: 'Sistemas y Herramientas Tecnológicas',
+    examples: 'Uso de software interno, punto de venta, biométrico, correo corporativo',
+  },
+  {
+    id: 'normativa_legal',
+    label: 'Normativa Legal y Cumplimiento',
+    examples: 'Código del Trabajo, IESS, normativa tributaria, prevención de lavado de activos',
+  },
+  {
+    id: 'otro',
+    label: 'Otro Tema',
+    examples: 'Cualquier otro tema específico de capacitación no listado',
+  },
+]
 
 // Cláusula legal de descuento por pérdida o daño (Art. 44 lit. f, Art. 42 num. 22 y Art. 90 del Código del Trabajo)
 export const LEGAL_DISCOUNT_DISCLAIMER_ECUADOR =

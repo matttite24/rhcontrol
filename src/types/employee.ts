@@ -215,6 +215,7 @@ export type IncidentType =
   | 'permiso_laboral'
   | 'acta_entrega'
   | 'certificado_trabajo'
+  | 'acta_capacitacion'
   | 'otro'
 
 export type IncidentStatus = 'pendiente' | 'aprobado' | 'rechazado' | 'registrado' | 'anulado'
@@ -284,6 +285,15 @@ export interface LeaveIncidentMetadata {
   deduction_id?: string
   incident_id?: string
   shift_request_ids?: string[]
+  /**
+   * true si el permiso con cargo a vacaciones se autorizó como ADELANTO de
+   * días del período vigente aún no cumplido (empleado con <1 año, o que ya
+   * agotó el arrastre del período anterior) — ver checkbox "Adelantar días"
+   * en LeavePermissionWizardModal. Relevante para la liquidación si el
+   * empleado renuncia antes de completar el año: estos días adelantados
+   * deben descontarse del finiquito.
+   */
+  is_advance?: boolean
 }
 
 export interface ScheduleDayChange {
@@ -330,9 +340,22 @@ export interface VacationRequestMetadata {
   is_advance?: boolean
 }
 
+export type BiometricIncidentType = 'sin_marcacion' | 'doble_marcacion' | 'marcacion_fuera_de_tiempo'
+
+export interface BiometricIncidentMetadata {
+  employee_id: string
+  employee_name: string
+  national_id?: string
+  department?: string
+  position?: string
+  incident_type: BiometricIncidentType
+  reason: string
+  sub_type?: string
+}
+
 export type IncidentInsert = Omit<Incident, 'id' | 'created_at' | 'updated_at' | 'employee'>
 
-export type ShiftRequestType = 'horas_extras' | 'cambio_horario' | 'permiso_laboral' | 'solicitud_vacaciones' | 'otro'
+export type ShiftRequestType = 'horas_extras' | 'cambio_horario' | 'permiso_laboral' | 'solicitud_vacaciones' | 'incidencia_marcacion' | 'otro'
 export type ShiftRequestStatus = 'pendiente' | 'aprobado' | 'rechazado'
 
 export interface ShiftRequest {

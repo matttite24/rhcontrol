@@ -9,6 +9,8 @@ import { IncidentType } from '@/types/employee'
  * - solicitud_vacaciones   -> 'VAC' (Vacaciones)
  * - permiso_laboral        -> 'PER' (Permiso Laboral)
  * - incapacidad            -> 'MED' (Permiso Médico / Incapacidad)
+ * - incidencia_marcacion   -> 'IMB' (Marcación Biométrica)
+ * - acta_capacitacion      -> 'CAP' (Acta de Capacitación)
  * - otro                   -> 'DOC' (Documento General)
  */
 export const INCIDENT_PREFIX_MAP: Record<IncidentType | string, string> = {
@@ -22,6 +24,8 @@ export const INCIDENT_PREFIX_MAP: Record<IncidentType | string, string> = {
   certificado_trabajo: 'CER',
   horas_extras: 'HEX',
   cambio_horario: 'CAM',
+  incidencia_marcacion: 'IMB',
+  acta_capacitacion: 'CAP',
   otro: 'DOC',
 }
 

@@ -34,7 +34,32 @@ export async function markQuincenaPaidAction(
       return { success: false, error: 'No hay empleados seleccionados para marcar como pagados.' }
     }
 
-    const rows = input.employees.map((e) => ({
+    // Defensa en profundidad: aunque la UI ya excluye del checklist a quien
+    // fue pagado, se vuelve a filtrar aquí contra la base de datos antes de
+    // insertar — un empleado ya pagado en este período nunca debe
+    // sobrescribir su paid_at/amount por un reintento o una petición manual.
+    const employeeIds = input.employees.map((e) => e.employeeId)
+    const { data: alreadyPaid, error: checkError } = await supabase
+      .from('quincena_payments')
+      .select('employee_id')
+      .eq('organization_id', input.organizationId)
+      .eq('period_year', input.periodYear)
+      .eq('period_month', input.periodMonth)
+      .in('employee_id', employeeIds)
+
+    if (checkError) {
+      console.error('[markQuincenaPaidAction] Error al verificar pagos existentes:', checkError)
+      return { success: false, error: 'No se pudo verificar el estado de pago. Intenta de nuevo.' }
+    }
+
+    const alreadyPaidIds = new Set((alreadyPaid || []).map((r) => r.employee_id))
+    const pendingEmployees = input.employees.filter((e) => !alreadyPaidIds.has(e.employeeId))
+
+    if (pendingEmployees.length === 0) {
+      return { success: false, error: 'Los empleados seleccionados ya fueron pagados en este período.' }
+    }
+
+    const rows = pendingEmployees.map((e) => ({
       organization_id: input.organizationId,
       employee_id: e.employeeId,
       period_year: input.periodYear,
@@ -44,9 +69,7 @@ export async function markQuincenaPaidAction(
       paid_at: new Date().toISOString(),
     }))
 
-    const { error } = await supabase
-      .from('quincena_payments')
-      .upsert(rows, { onConflict: 'organization_id,employee_id,period_year,period_month' })
+    const { error } = await supabase.from('quincena_payments').insert(rows)
 
     if (error) {
       console.error('[markQuincenaPaidAction] Error al registrar pagos de quincena:', error)

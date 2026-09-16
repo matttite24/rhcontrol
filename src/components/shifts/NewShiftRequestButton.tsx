@@ -23,13 +23,15 @@ const loadOvertimeWizard = () => import('./OvertimeWizardModal').then((m) => m.O
 const loadLeaveWizard = () => import('./LeavePermissionWizardModal').then((m) => m.LeavePermissionWizardModal)
 const loadScheduleChangeWizard = () => import('./ScheduleChangeWizardModal').then((m) => m.ScheduleChangeWizardModal)
 const loadVacationWizard = () => import('./VacationWizardModal').then((m) => m.VacationWizardModal)
+const loadBiometricWizard = () => import('./BiometricIncidentWizardModal').then((m) => m.BiometricIncidentWizardModal)
 
 const OvertimeWizardModal = dynamic(loadOvertimeWizard, { loading: () => wizardLoading })
 const LeavePermissionWizardModal = dynamic(loadLeaveWizard, { loading: () => wizardLoading })
 const ScheduleChangeWizardModal = dynamic(loadScheduleChangeWizard, { loading: () => wizardLoading })
 const VacationWizardModal = dynamic(loadVacationWizard, { loading: () => wizardLoading })
+const BiometricIncidentWizardModal = dynamic(loadBiometricWizard, { loading: () => wizardLoading })
 
-type ActiveView = 'select' | 'horas_extras' | 'permiso_laboral' | 'cambio_horario' | 'solicitud_vacaciones'
+type ActiveView = 'select' | 'horas_extras' | 'permiso_laboral' | 'cambio_horario' | 'solicitud_vacaciones' | 'incidencia_marcacion'
 
 interface NewShiftRequestButtonProps {
   organizationId: string
@@ -68,6 +70,7 @@ export function NewShiftRequestButton({
       loadLeaveWizard()
       loadScheduleChangeWizard()
       loadVacationWizard()
+      loadBiometricWizard()
     }
   }, [dialogOpen])
 
@@ -91,7 +94,8 @@ export function NewShiftRequestButton({
       type === 'horas_extras' ||
       type === 'permiso_laboral' ||
       type === 'cambio_horario' ||
-      type === 'solicitud_vacaciones'
+      type === 'solicitud_vacaciones' ||
+      type === 'incidencia_marcacion'
     ) {
       requestCloseRef.current = null
       setActiveView(type)
@@ -200,6 +204,17 @@ export function NewShiftRequestButton({
 
           {activeView === 'solicitud_vacaciones' && (
             <VacationWizardModal
+              organizationId={organizationId}
+              organizationName={organizationName}
+              employees={employees}
+              onOpenChange={handleWizardOpenChange}
+              onSuccess={() => router.refresh()}
+              onRegisterRequestClose={(fn) => { requestCloseRef.current = fn }}
+            />
+          )}
+
+          {activeView === 'incidencia_marcacion' && (
+            <BiometricIncidentWizardModal
               organizationId={organizationId}
               organizationName={organizationName}
               employees={employees}

@@ -24,12 +24,14 @@ const loadNonCompliantWizard = () => import('./NonCompliantWizardModal').then((m
 const loadSalaryAdvanceWizard = () => import('./SalaryAdvanceWizardModal').then((m) => m.SalaryAdvanceWizardModal)
 const loadDeliveryActWizard = () => import('./DeliveryActWizardModal').then((m) => m.DeliveryActWizardModal)
 const loadWorkCertificateWizard = () => import('./WorkCertificateWizardModal').then((m) => m.WorkCertificateWizardModal)
+const loadTrainingActWizard = () => import('./TrainingActWizardModal').then((m) => m.TrainingActWizardModal)
 
 const WarningWizardModal = dynamic(loadWarningWizard, { loading: () => wizardLoading })
 const NonCompliantWizardModal = dynamic(loadNonCompliantWizard, { loading: () => wizardLoading })
 const SalaryAdvanceWizardModal = dynamic(loadSalaryAdvanceWizard, { loading: () => wizardLoading })
 const DeliveryActWizardModal = dynamic(loadDeliveryActWizard, { loading: () => wizardLoading })
 const WorkCertificateWizardModal = dynamic(loadWorkCertificateWizard, { loading: () => wizardLoading })
+const TrainingActWizardModal = dynamic(loadTrainingActWizard, { loading: () => wizardLoading })
 
 type ActiveView =
   | 'select'
@@ -38,6 +40,7 @@ type ActiveView =
   | 'anticipo_sueldo'
   | 'acta_entrega'
   | 'certificado_trabajo'
+  | 'acta_capacitacion'
 
 interface NewIncidentButtonProps {
   organizationId?: string
@@ -92,6 +95,7 @@ export function NewIncidentButton({
       loadSalaryAdvanceWizard()
       loadDeliveryActWizard()
       loadWorkCertificateWizard()
+      loadTrainingActWizard()
     }
   }, [dialogOpen])
 
@@ -101,7 +105,8 @@ export function NewIncidentButton({
       type === 'llamado_atencion' ||
       type === 'actividad_no_conforme' ||
       type === 'anticipo_sueldo' ||
-      type === 'certificado_trabajo'
+      type === 'certificado_trabajo' ||
+      type === 'acta_capacitacion'
     ) {
       if (type === 'llamado_atencion') {
         setEscalatedEmployee(null)
@@ -182,6 +187,17 @@ export function NewIncidentButton({
         >
           {activeView === 'certificado_trabajo' && (
             <WorkCertificateWizardModal
+              organizationId={organizationId || employees[0]?.organization_id || ''}
+              organizationName={organizationName}
+              employees={employees}
+              onOpenChange={handleWizardOpenChange}
+              onSuccess={() => router.refresh()}
+              onRegisterRequestClose={(fn) => { requestCloseRef.current = fn }}
+            />
+          )}
+
+          {activeView === 'acta_capacitacion' && (
+            <TrainingActWizardModal
               organizationId={organizationId || employees[0]?.organization_id || ''}
               organizationName={organizationName}
               employees={employees}
