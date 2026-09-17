@@ -135,6 +135,31 @@ export async function createLeavePermissionAction(params: CreateLeavePermissionP
       return { success: false, error: 'No autenticado. Inicia sesión nuevamente.' }
     }
 
+    // Bloquear duplicados: mismo empleado + misma fecha y horario ya
+    // registrado como permiso pendiente/aprobado. Sin esto, un doble envío
+    // (doble clic, reintento tras un error transitorio en red lenta, etc.)
+    // puede dejar dos filas idénticas en shift_requests.
+    const { data: existingLeaves } = await supabase
+      .from('shift_requests')
+      .select('id, request_type, metadata, status, date')
+      .eq('organization_id', params.organizationId)
+      .eq('employee_id', params.employeeId)
+      .eq('date', params.date)
+      .in('status', ['pendiente', 'aprobado'])
+
+    const hasDuplicateLeave = (existingLeaves || []).some((row) => {
+      const isLeaveRow = row.request_type === 'permiso_laboral' || row.metadata?.sub_type === 'permiso_laboral'
+      if (!isLeaveRow) return false
+      return row.metadata?.start_time === params.startTime && row.metadata?.end_time === params.endTime
+    })
+
+    if (hasDuplicateLeave) {
+      return {
+        success: false,
+        error: 'Ya existe un permiso laboral pendiente o aprobado para este empleado con la misma fecha y horario.',
+      }
+    }
+
     // Generar numeración secuencial de 3 letras (PER-0001) para la organización.
     // El registro vive en shift_requests, así que se usa ese contador.
     const { code: perCode, sequenceNumber: perSeq } = await getNextShiftRequestSequenceCode(
@@ -294,6 +319,31 @@ export async function createBiometricIncidentAction(params: CreateBiometricIncid
       return { success: false, error: 'No autenticado. Inicia sesión nuevamente.' }
     }
 
+    // Bloquear duplicados: mismo empleado + misma fecha + mismo tipo de
+    // incidencia ya registrado y vigente (no anulado). Sin esto, un doble
+    // envío (doble clic, reintento tras un error transitorio en red lenta,
+    // etc.) puede dejar dos constancias idénticas.
+    const { data: existingIncidents } = await supabase
+      .from('shift_requests')
+      .select('id, request_type, metadata, status, date')
+      .eq('organization_id', params.organizationId)
+      .eq('employee_id', params.employeeId)
+      .eq('date', params.date)
+      .neq('status', 'rechazado')
+
+    const hasDuplicateIncident = (existingIncidents || []).some((row) => {
+      const isIncidentRow = row.request_type === 'incidencia_marcacion' || row.metadata?.sub_type === 'incidencia_marcacion'
+      if (!isIncidentRow) return false
+      return row.metadata?.incident_type === params.metadata.incident_type
+    })
+
+    if (hasDuplicateIncident) {
+      return {
+        success: false,
+        error: 'Ya existe una incidencia de marcación registrada para este empleado en esta fecha con el mismo tipo.',
+      }
+    }
+
     const { code: imbCode, sequenceNumber: imbSeq } = await getNextShiftRequestSequenceCode(
       supabase,
       params.organizationId,
@@ -440,6 +490,32 @@ export async function createScheduleChangeAction(params: CreateScheduleChangePar
     const endTime = firstDay?.has_split_shift
       ? firstDay?.end_time_2 || '18:00'
       : firstDay?.end_time_1 || '17:00'
+
+    // Bloquear duplicados: mismo empleado + mismo conjunto de fechas
+    // modificadas ya registrado como cambio de horario pendiente/aprobado.
+    // Sin esto, un doble envío (doble clic, reintento tras un error
+    // transitorio en red lenta, etc.) puede dejar dos filas idénticas.
+    const requestedDates = (params.metadata.day_changes || []).map((dc) => dc.date).sort().join(',')
+    const { data: existingScheduleChanges } = await supabase
+      .from('shift_requests')
+      .select('id, request_type, metadata, status')
+      .eq('organization_id', params.organizationId)
+      .eq('employee_id', params.employeeId)
+      .in('status', ['pendiente', 'aprobado'])
+
+    const hasDuplicateScheduleChange = (existingScheduleChanges || []).some((row) => {
+      const isScheduleChangeRow = row.request_type === 'cambio_horario' || row.metadata?.sub_type === 'cambio_horario'
+      if (!isScheduleChangeRow) return false
+      const rowDates = ((row.metadata?.day_changes || []) as { date: string }[]).map((dc) => dc.date).sort().join(',')
+      return rowDates === requestedDates && requestedDates.length > 0
+    })
+
+    if (hasDuplicateScheduleChange) {
+      return {
+        success: false,
+        error: 'Ya existe un cambio de horario pendiente o aprobado para este empleado con las mismas fechas.',
+      }
+    }
 
     // Generar numeración secuencial de 3 letras (CAM-0001) para la organización
     const { code: camCode, sequenceNumber: camSeq } = await getNextShiftRequestSequenceCode(
@@ -1151,6 +1227,30 @@ export async function createOvertimeRequestAction(params: CreateOvertimeRequestP
 
     if (!user) {
       return { success: false, error: 'No autenticado. Inicia sesión nuevamente.' }
+    }
+
+    // Bloquear duplicados: mismo empleado + misma fecha y horario ya
+    // registrado como horas extras pendiente/aprobado. Sin esto, un doble
+    // envío (doble clic, reintento tras un error transitorio en red lenta,
+    // etc.) puede dejar dos filas idénticas en shift_requests.
+    const { data: existingOvertime } = await supabase
+      .from('shift_requests')
+      .select('id, request_type, status, date, start_time, end_time')
+      .eq('organization_id', params.organizationId)
+      .eq('employee_id', params.employeeId)
+      .eq('request_type', 'horas_extras')
+      .eq('date', params.date)
+      .in('status', ['pendiente', 'aprobado'])
+
+    const hasDuplicateOvertime = (existingOvertime || []).some(
+      (row) => row.start_time === params.startTime && row.end_time === params.endTime
+    )
+
+    if (hasDuplicateOvertime) {
+      return {
+        success: false,
+        error: 'Ya existe una solicitud de horas extras pendiente o aprobada para este empleado con la misma fecha y horario.',
+      }
     }
 
     // 2. Generar numeración secuencial de 3 letras (HEX-0001) para la organización
