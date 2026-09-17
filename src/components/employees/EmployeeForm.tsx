@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import { createClient } from '@/lib/supabase/client'
+import { saveEmployeeAction } from '@/lib/employees/actions'
 import { Employee, EmployeeInsert, Department, Position, EmployeeSalary, SalaryType, EmployeeSchedule, EmployeeDocument, RotatingShiftPattern, EmployeeRotatingSchedule } from '@/types/employee'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { getEmployeeCompleteness, completenessTone, type EmployeeTabKey, type EmployeeCompleteness } from '@/lib/employees/completeness'
@@ -109,7 +109,6 @@ export function EmployeeForm({
 }: EmployeeFormProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
   
   const urlTab = searchParams.get('tab')
@@ -332,98 +331,36 @@ export function EmployeeForm({
     }
 
     try {
-      let savedEmployeeId = employee?.id
+      // Una sola llamada transaccional (RPC save_employee) en vez de 7
+      // escrituras secuenciales desde el navegador: o se guarda todo
+      // (empleado + salarios + horario + horario rotativo) o no se guarda
+      // nada — sin estados intermedios donde un delete ya corrió pero su
+      // insert siguiente falló.
+      const result = await saveEmployeeAction({
+        employeeId: employee?.id,
+        organizationId: currentOrgId,
+        employee: payload,
+        salaries: salaries.map((sal) => ({
+          salary_type: sal.salary_type,
+          name: sal.name.trim() || '',
+          amount: sal.amount,
+          affects_iess: sal.affects_iess,
+        })),
+        schedules: schedules.map((item) => ({
+          ...item,
+          start_time_1: item.is_workday ? (item.start_time_1 || '08:00') : null,
+          end_time_1: item.is_workday ? (item.end_time_1 || '17:00') : null,
+          start_time_2: (item.is_workday && item.has_split_shift) ? (item.start_time_2 || '14:00') : null,
+          end_time_2: (item.is_workday && item.has_split_shift) ? (item.end_time_2 || '18:00') : null,
+        })),
+        rotatingSchedule:
+          scheduleMode === 'rotating' && rotatingSchedule.patternId
+            ? { pattern_id: rotatingSchedule.patternId, anchor_date: rotatingSchedule.anchorDate }
+            : null,
+      })
 
-      if (employee) {
-        const { error: updateError } = await supabase
-          .from('employees')
-          .update(payload)
-          .eq('id', employee.id)
-
-        if (updateError) throw updateError
-      } else {
-        const { data: newEmp, error: insertError } = await supabase
-          .from('employees')
-          .insert(payload)
-          .select('id')
-          .single()
-
-        if (insertError) throw insertError
-        savedEmployeeId = newEmp.id
-      }
-
-      // 1. Guardar Conceptos Salariales
-      if (savedEmployeeId) {
-        await supabase
-          .from('employee_salaries')
-          .delete()
-          .eq('employee_id', savedEmployeeId)
-
-        if (salaries.length > 0) {
-          const salaryPayloads = salaries.map((sal) => ({
-            organization_id: currentOrgId,
-            employee_id: savedEmployeeId!,
-            salary_type: sal.salary_type,
-            name: sal.name.trim() || null,
-            amount: sal.amount,
-            affects_iess: sal.affects_iess,
-          }))
-
-          const { error: salaryInsertError } = await supabase
-            .from('employee_salaries')
-            .insert(salaryPayloads)
-
-          if (salaryInsertError) console.error('Error insertando salarios:', salaryInsertError)
-        }
-
-        // 2. Guardar Horario Laboral
-        await supabase
-          .from('employee_schedules')
-          .delete()
-          .eq('employee_id', savedEmployeeId)
-
-        if (schedules.length > 0) {
-          const schedulePayloads = schedules.map((item) => ({
-            organization_id: currentOrgId,
-            employee_id: savedEmployeeId!,
-            day_of_week: item.day_of_week,
-            day_order: item.day_order,
-            is_workday: item.is_workday,
-            has_split_shift: item.has_split_shift,
-            start_time_1: item.is_workday ? (item.start_time_1 || '08:00') : null,
-            end_time_1: item.is_workday ? (item.end_time_1 || '17:00') : null,
-            start_time_2: (item.is_workday && item.has_split_shift) ? (item.start_time_2 || '14:00') : null,
-            end_time_2: (item.is_workday && item.has_split_shift) ? (item.end_time_2 || '18:00') : null,
-          }))
-
-          const { error: scheduleInsertError } = await supabase
-            .from('employee_schedules')
-            .insert(schedulePayloads)
-
-          if (scheduleInsertError) console.error('Error insertando horarios:', scheduleInsertError)
-        }
-
-        // 2b. Guardar Horario Rotativo (si el modo activo es 'rotating' y hay
-        // un patrón elegido). Se borra la asignación previa primero: si el
-        // usuario cambió a modo semanal o quitó el patrón, no debe quedar un
-        // horario rotativo huérfano compitiendo con el semanal.
-        await supabase
-          .from('employee_rotating_schedules')
-          .delete()
-          .eq('employee_id', savedEmployeeId)
-
-        if (scheduleMode === 'rotating' && rotatingSchedule.patternId) {
-          const { error: rotatingInsertError } = await supabase
-            .from('employee_rotating_schedules')
-            .insert({
-              organization_id: currentOrgId,
-              employee_id: savedEmployeeId,
-              pattern_id: rotatingSchedule.patternId,
-              anchor_date: rotatingSchedule.anchorDate,
-            })
-
-          if (rotatingInsertError) console.error('Error insertando horario rotativo:', rotatingInsertError)
-        }
+      if (!result.success) {
+        throw new Error(result.error || 'Ocurrió un error inesperado al guardar.')
       }
 
       toast.success(
