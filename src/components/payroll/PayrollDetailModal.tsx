@@ -460,12 +460,6 @@ export function PayrollDetailModal({
                       <span className="text-muted-foreground">Sueldo Base</span>
                       <span className="font-mono font-medium">${item.baseSalary.toFixed(2)}</span>
                     </div>
-                    {item.bonuses > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Bonificaciones</span>
-                        <span className="font-mono font-medium">${item.bonuses.toFixed(2)}</span>
-                      </div>
-                    )}
                     {item.overtimeAmount > 0 && (() => {
                       // Desglose por recargo (50%/100%) sumando las solicitudes
                       // de horas extras aprobadas del período — así se ve
