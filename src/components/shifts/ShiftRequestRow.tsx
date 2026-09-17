@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { SHIFT_REQUEST_TYPE_OPTIONS, SHIFT_REQUEST_STATUS_MAP } from '@/lib/shifts/constants'
-import { Eye, Pencil, FileText } from 'lucide-react'
+import { Eye, Pencil, FileText, CalendarClock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getInitials } from '@/lib/shifts/format'
 
@@ -70,6 +70,17 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
       ? { label: 'Anulado', badgeClass: SHIFT_REQUEST_STATUS_MAP.rechazado.badgeClass }
       : SHIFT_REQUEST_STATUS_MAP[req.status] ?? SHIFT_REQUEST_STATUS_MAP.pendiente
   const displayTitle = req.title ? req.title.replace(/^\[[A-Z]{3}-\d+\]\s*/, '') : ''
+
+  // Mismo criterio que el botón "Programar recuperación" en el modal de
+  // detalle (ver ShiftRequestDetailModal): permiso aprobado, con
+  // recovery_method='recuperacion_dias' y aún sin turnos de recuperación
+  // guardados — sin este indicador, el usuario solo se entera de que falta
+  // programar la recuperación al abrir el detalle de cada permiso uno por uno.
+  const pendingRecovery =
+    isLeavePermission &&
+    req.status === 'aprobado' &&
+    req.metadata?.recovery_method === 'recuperacion_dias' &&
+    (!req.metadata?.recovery_schedules || req.metadata.recovery_schedules.length === 0)
 
   // Subtítulo limpio y sin redundancias
   let subtitle = ''
@@ -148,15 +159,27 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
         </div>
       </TableCell>
 
-      {/* 4. Identificador: Código sin borde + Estado en misma fila */}
+      {/* 4. Identificador: Código + Estado, con el aviso de recuperación pendiente debajo */}
       <TableCell className="py-3.5">
-        <div className="flex items-center gap-2 whitespace-nowrap">
-          <span className="font-mono text-xs font-semibold text-foreground tracking-tight">
-            {documentCode}
-          </span>
-          <Badge variant="outline" className={cn("text-[10px] h-5 px-1.5 font-medium border capitalize", statusInfo.badgeClass)}>
-            {statusInfo.label}
-          </Badge>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <span className="font-mono text-xs font-semibold text-foreground tracking-tight">
+              {documentCode}
+            </span>
+            <Badge variant="outline" className={cn("text-[10px] h-5 px-1.5 font-medium border capitalize", statusInfo.badgeClass)}>
+              {statusInfo.label}
+            </Badge>
+          </div>
+          {pendingRecovery && (
+            <Badge
+              variant="outline"
+              className="text-[10px] h-5 px-1.5 gap-1 font-medium border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/10 w-fit"
+              title="Este permiso aún no tiene fechas de recuperación programadas"
+            >
+              <CalendarClock className="h-3 w-3" />
+              Pendiente Recuperar
+            </Badge>
+          )}
         </div>
       </TableCell>
 

@@ -37,9 +37,9 @@ import {
   CalendarCheck2,
   Fingerprint,
 } from 'lucide-react'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { DatePicker } from '@/components/ui/date-picker'
+import { TimePicker } from '@/components/ui/time-picker'
 import { deleteRejectedShiftRequestAction } from '@/lib/shifts/actions'
 import { printOvertimeDocument } from '@/lib/shifts/print-overtime'
 import { printLeavePermissionDocument } from '@/lib/shifts/print-leave-permission'
@@ -941,7 +941,7 @@ export function ShiftRequestDetailModal({
 
       {/* Programación de fechas de recuperación — solo permisos aprobados con recovery_method='recuperacion_dias'. */}
       <Dialog open={showRecoveryForm} onOpenChange={setShowRecoveryForm}>
-        <DialogContent className="sm:max-w-lg p-6">
+        <DialogContent className="sm:max-w-xl p-6">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-foreground">
               Programar recuperación de días
@@ -951,27 +951,64 @@ export function ShiftRequestDetailModal({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex items-center justify-between p-2.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-xs mt-2">
-            <span className="text-muted-foreground">
-              {request.metadata?.leave_unit === 'dias'
-                ? `Días ausentes a recuperar: ${getRecoveryTargetCount()}`
-                : 'Turno de recuperación equivalente a las horas del permiso'}
-            </span>
-            <span
-              className={cn(
-                "font-mono font-bold",
-                recoveryRows.filter((r) => r.date).length === getRecoveryTargetCount()
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-amber-600 dark:text-amber-400"
+          {/* Contexto del permiso (qué se debe recuperar) + progreso, separados
+              en su propia fila cada uno para que el texto largo nunca empuje
+              al contador a envolver de forma rara. */}
+          <div className="rounded-lg bg-violet-500/10 border border-violet-500/20 p-3 mt-2 space-y-2">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {request.metadata?.leave_unit === 'dias' ? (
+                <>
+                  Debe recuperar <strong className="text-foreground font-semibold">{getRecoveryTargetCount()}</strong>{' '}
+                  {getRecoveryTargetCount() === 1 ? 'día' : 'días'} de ausencia
+                  {request.metadata?.start_date && (
+                    <>
+                      {' '}(permiso del{' '}
+                      <strong className="text-foreground font-semibold">{formatLongDate(request.metadata.start_date)}</strong>
+                      {request.metadata.end_date && request.metadata.end_date !== request.metadata.start_date && (
+                        <> al <strong className="text-foreground font-semibold">{formatLongDate(request.metadata.end_date)}</strong></>
+                      )}
+                      )
+                    </>
+                  )}
+                  .
+                </>
+              ) : (
+                <>
+                  Debe recuperar{' '}
+                  <strong className="text-foreground font-semibold">
+                    {request.metadata?.requested_hours ?? request.hours ?? 0} {(request.metadata?.requested_hours ?? request.hours) === 1 ? 'hora' : 'horas'}
+                  </strong>
+                  {request.metadata?.start_time && request.metadata?.end_time && (
+                    <>
+                      {' '}del permiso (
+                      <strong className="text-foreground font-semibold">{request.metadata.start_time} a {request.metadata.end_time}</strong>
+                      )
+                    </>
+                  )}
+                  , en un turno equivalente.
+                </>
               )}
-            >
-              {recoveryRows.filter((r) => r.date).length} / {getRecoveryTargetCount()}
-            </span>
+            </p>
+            <div className="flex items-center justify-between pt-2 border-t border-violet-500/20">
+              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                Turnos programados
+              </span>
+              <span
+                className={cn(
+                  "font-mono font-bold text-sm tabular-nums",
+                  recoveryRows.filter((r) => r.date).length === getRecoveryTargetCount()
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-amber-600 dark:text-amber-400"
+                )}
+              >
+                {recoveryRows.filter((r) => r.date).length} / {getRecoveryTargetCount()}
+              </span>
+            </div>
           </div>
 
-          <div className="space-y-3 mt-2 max-h-[50vh] overflow-y-auto pr-1">
+          <div className="space-y-3 mt-3 max-h-[50vh] overflow-y-auto pr-1">
             {recoveryRows.map((row, idx) => (
-              <div key={row._key} className="p-3 rounded-lg border border-border/60 bg-muted/20 space-y-2">
+              <div key={row._key} className="p-3.5 rounded-lg border border-border/60 bg-muted/20 space-y-3">
                 <div className="flex items-center justify-between">
                   <Label className="text-[11px] font-semibold text-muted-foreground">Turno {idx + 1}</Label>
                   {recoveryRows.length > 1 && (
@@ -989,32 +1026,32 @@ export function ShiftRequestDetailModal({
                     </Button>
                   )}
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-1">
-                    <Label className="text-[10px] text-muted-foreground">Fecha</Label>
-                    <DatePicker
-                      name={`recovery_date_${idx}`}
-                      value={row.date}
-                      onChange={(v) => updateRecoveryRow(idx, 'date', v)}
-                      className="h-8 text-xs"
-                    />
-                  </div>
-                  <div className="col-span-1">
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] text-muted-foreground">Fecha</Label>
+                  <DatePicker
+                    name={`recovery_date_${idx}`}
+                    value={row.date}
+                    onChange={(v) => updateRecoveryRow(idx, 'date', v)}
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
                     <Label className="text-[10px] text-muted-foreground">Hora inicio</Label>
-                    <Input
-                      type="time"
+                    <TimePicker
                       value={row.start_time || ''}
-                      onChange={(e) => updateRecoveryRow(idx, 'start_time', e.target.value)}
-                      className="h-8 text-xs"
+                      onChange={(v) => updateRecoveryRow(idx, 'start_time', v)}
+                      placeholder="Hora inicio"
+                      className="h-9 w-full justify-start"
                     />
                   </div>
-                  <div className="col-span-1">
+                  <div className="space-y-1.5">
                     <Label className="text-[10px] text-muted-foreground">Hora fin</Label>
-                    <Input
-                      type="time"
+                    <TimePicker
                       value={row.end_time || ''}
-                      onChange={(e) => updateRecoveryRow(idx, 'end_time', e.target.value)}
-                      className="h-8 text-xs"
+                      onChange={(v) => updateRecoveryRow(idx, 'end_time', v)}
+                      placeholder="Hora fin"
+                      className="h-9 w-full justify-start"
                     />
                   </div>
                 </div>
