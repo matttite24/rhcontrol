@@ -25,7 +25,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Loader2,
-  Search,
   Calendar,
   AlertCircle,
   Clock,
@@ -39,6 +38,8 @@ import {
   getEmployeeVacationBalanceAction,
 } from '@/lib/shifts/actions'
 import { getInitials, formatLongDate } from '@/lib/shifts/format'
+import { EmployeePickerStep } from '@/components/shared/EmployeePickerStep'
+import { pushRecentEmployeeId } from '@/lib/shifts/recent-employees'
 import { cn } from '@/lib/utils'
 
 interface VacationWizardModalProps {
@@ -224,18 +225,6 @@ export function VacationWizardModal({
   const isExceeded = requestedDays > availableDays
   const remainingDays = Math.max(0, availableDays - requestedDays)
 
-  // Empleados filtrados por búsqueda en Paso 1
-  const displayedEmployees = useMemo(() => {
-    if (!searchQuery.trim()) return eligibleEmployees
-    const q = searchQuery.toLowerCase()
-    return eligibleEmployees.filter(
-      (e) =>
-        e.full_name?.toLowerCase().includes(q) ||
-        e.national_id?.toLowerCase().includes(q) ||
-        e.department?.toLowerCase().includes(q) ||
-        e.position?.toLowerCase().includes(q)
-    )
-  }, [eligibleEmployees, searchQuery])
 
   function resetForm() {
     setStep(1)
@@ -461,79 +450,49 @@ export function VacationWizardModal({
           <div className="p-6">
             {/* PASO 1: SELECCIÓN DEL EMPLEADO CON MÁS DE 1 AÑO */}
             {step === 1 && (
-              <div className="space-y-4 animate-in fade-in-50 duration-200">
-                <div className="flex items-center justify-between gap-3">
-                  <Label className="text-xs font-semibold text-foreground">
-                    Empleados que cumplen el requisito legal (&gt; 1 año de antigüedad)
-                  </Label>
-                  <Badge variant="outline" className="text-[10px] font-mono text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300">
-                    {eligibleEmployees.length} habilitados
-                  </Badge>
-                </div>
-
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                  <Input
-                    placeholder="Buscar empleado por nombre, cédula o cargo..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 text-xs h-9"
-                  />
-                </div>
-
-                {eligibleEmployees.length === 0 ? (
-                  <div className="p-8 text-center rounded-xl border border-dashed text-xs text-muted-foreground space-y-2">
-                    <AlertCircle className="h-8 w-8 text-amber-500 mx-auto opacity-80" />
-                    <p className="font-semibold text-foreground">No hay empleados con más de 1 año cumplido</p>
-                    <p>Para tener derecho al descanso anual legal se requiere un mínimo de 365 días continuos de servicio.</p>
-                  </div>
-                ) : (
-                  <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-                    {displayedEmployees.map((emp) => {
-                      const sen = getEmployeeSeniority(emp.hire_date)
-                      const isSelected = selectedEmpId === emp.id
-
-                      return (
-                        <div
-                          key={emp.id}
-                          onClick={() => setSelectedEmpId(emp.id)}
-                          className={cn(
-                            "flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all",
-                            isSelected
-                              ? "bg-emerald-500/10 border-emerald-500/50 shadow-xs"
-                              : "bg-card hover:bg-muted/40 border-border/70"
-                          )}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <Avatar className="h-9 w-9 ring-1 ring-border">
-                              <AvatarImage src={emp.avatar_url ?? undefined} alt={emp.full_name} />
-                              <AvatarFallback className="text-[11px] font-bold">
-                                {getInitials(emp.full_name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="min-w-0">
-                              <h4 className="text-xs font-bold text-foreground truncate">
-                                {emp.full_name}
-                              </h4>
-                              <p className="text-[11px] text-muted-foreground truncate">
-                                {emp.position || 'Empleado'} • {emp.department || 'General'}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="text-right shrink-0 pl-2">
-                            <Badge variant="outline" className="text-[10px] font-mono border-emerald-200 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-300">
-                              {sen.years} año(s) servicio
-                            </Badge>
-                            <span className="block text-[10px] text-muted-foreground mt-0.5 font-mono">
-                              Ingreso: {emp.hire_date || '—'}
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+              <div className="animate-in fade-in-50 duration-200">
+                <EmployeePickerStep
+                  employees={eligibleEmployees}
+                  selectedEmployeeId={selectedEmpId}
+                  onSelect={(id) => {
+                    setSelectedEmpId(id)
+                    pushRecentEmployeeId(id)
+                  }}
+                  searchQuery={searchQuery}
+                  onSearchQueryChange={setSearchQuery}
+                  searchPlaceholder="Buscar empleado por nombre, cédula o cargo..."
+                  maxHeight="300px"
+                  header={
+                    <div className="flex items-center justify-between gap-3">
+                      <Label className="text-xs font-semibold text-foreground">
+                        Empleados que cumplen el requisito legal (&gt; 1 año de antigüedad)
+                      </Label>
+                      <Badge variant="outline" className="text-[10px] font-mono text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        {eligibleEmployees.length} habilitados
+                      </Badge>
+                    </div>
+                  }
+                  emptySourceContent={
+                    <div className="p-8 text-center rounded-xl border border-dashed text-xs text-muted-foreground space-y-2">
+                      <AlertCircle className="h-8 w-8 text-amber-500 mx-auto opacity-80" />
+                      <p className="font-semibold text-foreground">No hay empleados con más de 1 año cumplido</p>
+                      <p>Para tener derecho al descanso anual legal se requiere un mínimo de 365 días continuos de servicio.</p>
+                    </div>
+                  }
+                  renderTrailing={(emp) => {
+                    const sen = getEmployeeSeniority(emp.hire_date)
+                    return (
+                      <div className="text-right shrink-0 pl-2">
+                        <Badge variant="outline" className="text-[10px] font-mono border-emerald-200 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-300">
+                          {sen.years} año(s) servicio
+                        </Badge>
+                        <span className="block text-[10px] text-muted-foreground mt-0.5 font-mono">
+                          Ingreso: {emp.hire_date || '—'}
+                        </span>
+                      </div>
+                    )
+                  }}
+                />
               </div>
             )}
 

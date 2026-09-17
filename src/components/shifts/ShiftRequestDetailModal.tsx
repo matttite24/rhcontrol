@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ShiftRequest, ShiftRequestStatus, Organization, LeaveRecoverySchedule } from '@/types/employee'
+import { ShiftRequest, ShiftRequestStatus, Organization, LeaveRecoverySchedule, EmployeeSchedule, DayOfWeek } from '@/types/employee'
 import {
   Dialog,
   DialogContent,
@@ -13,9 +13,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from '@/components/ui/toast'
+import { DetailModalHeader } from '@/components/shared/DetailModalHeader'
 import {
   Clock,
   Printer,
@@ -51,6 +51,16 @@ import { SHIFT_REQUEST_STATUS_MAP } from '@/lib/shifts/constants'
 import { getShiftRequestCode } from '@/lib/incidents/sequence'
 import { getInitials, formatLongDate } from '@/lib/shifts/format'
 import { cn } from '@/lib/utils'
+
+const DAYS_OF_WEEK_MAP: Record<number, DayOfWeek> = {
+  0: 'Domingo',
+  1: 'Lunes',
+  2: 'Martes',
+  3: 'Miércoles',
+  4: 'Jueves',
+  5: 'Viernes',
+  6: 'Sábado',
+}
 
 /** Suma `days` días a una fecha ISO (YYYY-MM-DD) sin problemas de zona horaria. */
 function addDaysToIsoLocal(iso: string, days: number): string {
@@ -90,6 +100,12 @@ export function ShiftRequestDetailModal({
   // medio) — nunca se envía al guardar (ver handleSaveRecovery).
   const [recoveryRows, setRecoveryRows] = useState<(LeaveRecoverySchedule & { _key: number })[]>([])
   const nextRecoveryRowKey = React.useRef(0)
+  // Horario habitual del empleado para la fecha de la solicitud de horas
+  // extras — se consulta en vivo (no se persiste al crear la solicitud), así
+  // que refleja el horario ACTUAL del empleado, no necesariamente el que
+  // tenía cuando pidió la hora extra si cambió de turno después.
+  const [dayOwnSchedule, setDayOwnSchedule] = useState<EmployeeSchedule | null>(null)
+  const [loadingDaySchedule, setLoadingDaySchedule] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -117,6 +133,37 @@ export function ShiftRequestDetailModal({
   }, [orgId, needsFetch, supabase])
 
   const organization = needsFetch ? fetchedOrganization : organizationProp
+
+  const isOvertimeForSchedule = request?.request_type === 'horas_extras'
+  useEffect(() => {
+    let isMounted = true
+    async function loadDaySchedule() {
+      if (!request || !isOvertimeForSchedule || !request.employee_id) {
+        if (isMounted) {
+          setDayOwnSchedule(null)
+          setLoadingDaySchedule(false)
+        }
+        return
+      }
+      setLoadingDaySchedule(true)
+      const { data } = await supabase
+        .from('employee_schedules')
+        .select('*')
+        .eq('employee_id', request.employee_id)
+      if (!isMounted) return
+      if (data) {
+        const [y, m, d] = request.date.split('-').map(Number)
+        const dayName = DAYS_OF_WEEK_MAP[new Date(y, m - 1, d).getDay()]
+        const sched = (data as EmployeeSchedule[]).find((s) => s.day_of_week === dayName) || null
+        setDayOwnSchedule(sched)
+      }
+      setLoadingDaySchedule(false)
+    }
+    loadDaySchedule()
+    return () => {
+      isMounted = false
+    }
+  }, [request, isOvertimeForSchedule, supabase])
 
   if (!request) return null
 
@@ -531,7 +578,6 @@ export function ShiftRequestDetailModal({
         primaryBtn: 'bg-amber-600 hover:bg-amber-700 text-white',
       }
 
-  const TypeIcon = typeConfig.icon
   const docCode = getShiftRequestCode(request)
 
   return (
@@ -540,52 +586,17 @@ export function ShiftRequestDetailModal({
         className="sm:max-w-xl p-0 overflow-hidden border-border/80 gap-0 max-h-[90vh] flex flex-col"
         showCloseButton={false}
       >
-        {/* Cabecera con Tipo de solicitud, Fecha de registro y Estado */}
-        <DialogHeader className={cn("p-6 pb-4 border-b shrink-0 transition-colors", typeConfig.headerBg)}>
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className={cn("p-2.5 rounded-xl border shrink-0 bg-background/80 shadow-2xs", typeConfig.accentText)}>
-                <TypeIcon className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <DialogTitle className="text-base font-bold text-foreground truncate">
-                    {typeConfig.title}
-                  </DialogTitle>
-                  {docCode && (
-                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-background/90 border border-border shadow-2xs text-foreground shrink-0">
-                      {docCode}
-                    </span>
-                  )}
-                </div>
-                <DialogDescription className="text-xs text-muted-foreground font-mono mt-0.5 truncate">
-                  Fecha de registro: {new Date(request.created_at).toLocaleDateString('es-EC')}
-                </DialogDescription>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2.5 shrink-0">
-              <Badge
-                variant="outline"
-                className={cn("text-xs font-medium border capitalize", statusInfo.badgeClass)}
-              >
-                {statusInfo.label}
-              </Badge>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => onOpenChange(false)}
-                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
-                title="Cerrar"
-                aria-label="Cerrar"
-              >
-                <X className="h-4 w-4" />
-                <span className="sr-only">Cerrar</span>
-              </Button>
-            </div>
-          </div>
-        </DialogHeader>
+        <DetailModalHeader
+          icon={typeConfig.icon}
+          title={typeConfig.title}
+          headerBg={typeConfig.headerBg}
+          accentText={typeConfig.accentText}
+          statusLabel={statusInfo.label}
+          statusBadgeClass={statusInfo.badgeClass}
+          documentCode={docCode}
+          registeredAtLabel={new Date(request.created_at).toLocaleDateString('es-EC')}
+          onClose={() => onOpenChange(false)}
+        />
 
         {/* Formato imprimible y detalles */}
         <div className="p-6 overflow-y-auto flex-1 space-y-4">
@@ -609,19 +620,24 @@ export function ShiftRequestDetailModal({
 
           <div className="space-y-4 pt-1">
             <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <span className="text-muted-foreground text-[11px] block">
-                  {(isVacation || (isLeave && leaveLastAbsentDate && leaveLastAbsentDate !== request.date)) ? 'Fechas Autorizadas:' : 'Fecha Autorizada:'}
-                </span>
-                <span className="font-semibold text-foreground">
-                  {isVacation
-                    ? `${formatLongDate(request.metadata?.start_date || request.date)} al ${formatLongDate(request.metadata?.end_date || request.date)}`
-                    : isLeave && leaveLastAbsentDate && leaveLastAbsentDate !== request.date
-                    ? `${formatLongDate(request.date)} al ${formatLongDate(leaveLastAbsentDate)}`
-                    : formatLongDate(request.date)}
-                </span>
-              </div>
-              {!isBiometricIncident && (
+              {/* Cambio de Horario: la fecha ya se muestra dentro del bloque
+                  "Cambio de Horario"/"Días y Horarios Modificados" de abajo
+                  (única fuente, evita repetir la misma fecha dos veces). */}
+              {!isScheduleChange && (
+                <div>
+                  <span className="text-muted-foreground text-[11px] block">
+                    {(isVacation || (isLeave && leaveLastAbsentDate && leaveLastAbsentDate !== request.date)) ? 'Fechas Autorizadas:' : 'Fecha Autorizada:'}
+                  </span>
+                  <span className="font-semibold text-foreground">
+                    {isVacation
+                      ? `${formatLongDate(request.metadata?.start_date || request.date)} al ${formatLongDate(request.metadata?.end_date || request.date)}`
+                      : isLeave && leaveLastAbsentDate && leaveLastAbsentDate !== request.date
+                      ? `${formatLongDate(request.date)} al ${formatLongDate(leaveLastAbsentDate)}`
+                      : formatLongDate(request.date)}
+                  </span>
+                </div>
+              )}
+              {!isBiometricIncident && !isScheduleChange && (
                 <div>
                   <span className="text-muted-foreground text-[11px] block">
                     {(isLeave || isVacation) ? 'Duración:' : 'Horas Autorizadas:'}
@@ -637,7 +653,7 @@ export function ShiftRequestDetailModal({
                   </span>
                 </div>
               )}
-              {!isBiometricIncident && (
+              {!isBiometricIncident && !isVacation && !isScheduleChange && (
                 <div>
                   <span className="text-muted-foreground text-[11px] block">Jornada / Horario:</span>
                   <span className="font-mono text-foreground">
@@ -645,16 +661,18 @@ export function ShiftRequestDetailModal({
                   </span>
                 </div>
               )}
-              <div>
-                <span className="text-muted-foreground text-[11px] block">Tipo de Trámite:</span>
-                <span className="text-foreground capitalize font-medium">
-                  {(request.request_type === 'permiso_laboral' || request.metadata?.sub_type === 'permiso_laboral')
-                    ? 'Permiso Laboral'
-                    : isBiometricIncident
-                    ? 'Marcación Biométrica'
-                    : request.request_type.replace('_', ' ')}
-                </span>
-              </div>
+              {!isVacation && !isScheduleChange && (
+                <div>
+                  <span className="text-muted-foreground text-[11px] block">Tipo de Trámite:</span>
+                  <span className="text-foreground capitalize font-medium">
+                    {(request.request_type === 'permiso_laboral' || request.metadata?.sub_type === 'permiso_laboral')
+                      ? 'Permiso Laboral'
+                      : isBiometricIncident
+                      ? 'Marcación Biométrica'
+                      : request.request_type.replace('_', ' ')}
+                  </span>
+                </div>
+              )}
 
               {(request.request_type === 'permiso_laboral' || request.metadata?.sub_type === 'permiso_laboral') && request.metadata && (
                 <div className="col-span-2 pt-1 text-[11px]">
@@ -688,15 +706,21 @@ export function ShiftRequestDetailModal({
                 </div>
               )}
 
-              {(request.request_type === 'cambio_horario' || request.metadata?.sub_type === 'cambio_horario') && request.metadata?.day_changes && (
+              {isScheduleChange && request.metadata?.day_changes && (
                 <div className="col-span-2 pt-1 text-[11px] space-y-1.5">
-                  <span className="text-muted-foreground block font-medium">Días y Horarios Modificados ({request.metadata.day_changes.length} fechas):</span>
-                  <div className="space-y-1 rounded-lg border border-border/60 bg-muted/20 p-2">
+                  <span className="text-muted-foreground block font-medium">
+                    {request.metadata.day_changes.length === 1 ? 'Cambio de Horario:' : `Días y Horarios Modificados (${request.metadata.day_changes.length} fechas):`}
+                  </span>
+                  <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/20 p-2.5">
                     {request.metadata.day_changes.map((dc: any, idx: number) => (
                       <div key={dc.date || idx} className="flex items-center justify-between text-xs py-1 border-b border-border/40 last:border-0">
-                        <span className="font-semibold text-foreground">{formatLongDate(dc.date)}:</span>
-                        <span className="font-mono text-blue-600 dark:text-blue-400 font-medium">
-                          {dc.is_workday ? (dc.new_summary || `${dc.start_time_1} a ${dc.end_time_1}`) : 'Descanso / Libre'}
+                        <span className="font-semibold text-foreground">{formatLongDate(dc.date)}</span>
+                        <span className="font-mono text-right">
+                          <span className="text-muted-foreground">{dc.original_summary || 'Horario Regular'}</span>
+                          <span className="text-muted-foreground mx-1">→</span>
+                          <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                            {dc.is_workday ? (dc.new_summary || `${dc.start_time_1} a ${dc.end_time_1}`) : 'Descanso / Libre'}
+                          </span>
                         </span>
                       </div>
                     ))}
@@ -705,24 +729,42 @@ export function ShiftRequestDetailModal({
               )}
 
               {(request.request_type === 'solicitud_vacaciones' || request.metadata?.sub_type === 'solicitud_vacaciones') && request.metadata && (
-                <div className="col-span-2 pt-1 text-[11px] space-y-2">
+                <div className="col-span-2 pt-1 text-[11px]">
                   <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-emerald-800 dark:text-emerald-300">
-                        {request.metadata.settlement_period || 'Período Legal de Vacaciones'}
-                      </span>
-                      <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                        {request.metadata.days_count || (request.hours ? Math.round(request.hours / 8) : 1)} días solicitados
-                      </span>
-                    </div>
-                    <div className="text-muted-foreground">
-                      Fecha de salida: <strong>{formatLongDate(request.metadata.start_date || request.date)}</strong> al <strong>{formatLongDate(request.metadata.end_date || request.date)}</strong>
+                    <div className="font-bold text-emerald-800 dark:text-emerald-300">
+                      {request.metadata.settlement_period || 'Período Legal de Vacaciones'}
                     </div>
                     {request.metadata.available_days !== undefined && (
                       <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-emerald-500/20 font-mono">
                         <span>Saldo previo: {request.metadata.available_days} días</span>
                         <span>Saldo restante: {request.metadata.remaining_days} días</span>
                       </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {isOvertime && (
+                <div className="col-span-2 pt-1 text-[11px]">
+                  <span className="text-muted-foreground block mb-1">Contexto del Día:</span>
+                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 font-medium text-foreground">
+                    {loadingDaySchedule ? (
+                      <span className="text-muted-foreground italic">Verificando horario habitual del empleado…</span>
+                    ) : !dayOwnSchedule ? (
+                      <span className="text-muted-foreground italic">Sin horario base configurado para este empleado.</span>
+                    ) : !dayOwnSchedule.is_workday ? (
+                      <span>
+                        El empleado tiene ese día <strong>libre</strong> según su horario habitual — toda la jornada
+                        solicitada ({request.start_time} a {request.end_time}) es tiempo extra.
+                      </span>
+                    ) : (
+                      <span>
+                        Horario habitual ese día: <strong>{dayOwnSchedule.start_time_1} a {dayOwnSchedule.end_time_1}</strong>
+                        {dayOwnSchedule.has_split_shift && dayOwnSchedule.start_time_2 && (
+                          <> / <strong>{dayOwnSchedule.start_time_2} a {dayOwnSchedule.end_time_2}</strong></>
+                        )}
+                        . Se autorizó tiempo adicional de <strong className="text-amber-700 dark:text-amber-400">{request.start_time} a {request.end_time}</strong>.
+                      </span>
                     )}
                   </div>
                 </div>
@@ -848,17 +890,6 @@ export function ShiftRequestDetailModal({
               </Button>
             )}
 
-            {!isPending && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpenChange(false)}
-                className="cursor-pointer"
-              >
-                Cerrar
-              </Button>
-            )}
           </div>
         </div>
       </DialogContent>

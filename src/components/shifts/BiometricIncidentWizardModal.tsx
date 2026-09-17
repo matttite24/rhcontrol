@@ -13,7 +13,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -26,7 +25,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Loader2,
-  Search,
   AlertTriangle,
   XCircle,
   Copy,
@@ -35,6 +33,8 @@ import {
 import { printBiometricIncidentDocument } from '@/lib/shifts/print-biometric-incident'
 import { createBiometricIncidentAction } from '@/lib/shifts/actions'
 import { getInitials, formatLongDate } from '@/lib/shifts/format'
+import { EmployeePickerStep } from '@/components/shared/EmployeePickerStep'
+import { pushRecentEmployeeId } from '@/lib/shifts/recent-employees'
 import { cn } from '@/lib/utils'
 
 interface BiometricIncidentTypeOption {
@@ -118,18 +118,6 @@ export function BiometricIncidentWizardModal({
     () => employees.find((e) => e.id === selectedEmpId),
     [employees, selectedEmpId]
   )
-
-  const filteredEmployees = useMemo(() => {
-    if (!searchQuery.trim()) return employees
-    const q = searchQuery.toLowerCase()
-    return employees.filter(
-      (e) =>
-        e.full_name.toLowerCase().includes(q) ||
-        (e.national_id && e.national_id.includes(q)) ||
-        (e.department && e.department.toLowerCase().includes(q)) ||
-        (e.position && e.position.toLowerCase().includes(q))
-    )
-  }, [employees, searchQuery])
 
   function handleReset() {
     setStep(1)
@@ -289,64 +277,17 @@ export function BiometricIncidentWizardModal({
                 </p>
               </div>
 
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar por nombre, cédula, cargo o departamento..."
-                  className="pl-9 h-9 text-xs"
-                  autoFocus
-                />
-              </div>
-
-              <div className="max-h-[260px] overflow-y-auto space-y-1.5 pr-1">
-                {filteredEmployees.map((emp) => {
-                  const isSelected = selectedEmpId === emp.id
-                  return (
-                    <button
-                      key={emp.id}
-                      type="button"
-                      onClick={() => setSelectedEmpId(emp.id)}
-                      className={cn(
-                        "w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all cursor-pointer",
-                        isSelected
-                          ? "bg-rose-500/10 border-rose-500 text-foreground ring-1 ring-rose-500/30"
-                          : "bg-card hover:bg-muted/50 border-border/60"
-                      )}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Avatar className="h-9 w-9 ring-1 ring-border shrink-0">
-                          <AvatarImage src={emp.avatar_url ?? undefined} alt={emp.full_name} />
-                          <AvatarFallback className="text-[11px] font-semibold">
-                            {getInitials(emp.full_name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs font-bold text-foreground truncate">
-                            {emp.full_name}
-                          </span>
-                          <span className="text-[11px] font-mono text-muted-foreground truncate">
-                            CI: {emp.national_id || '—'} • {emp.position || emp.department || 'Empleado'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {isSelected && (
-                        <div className="size-5 rounded-full bg-rose-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                          ✓
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-
-                {filteredEmployees.length === 0 && (
-                  <div className="py-8 text-center text-xs text-muted-foreground">
-                    No se encontraron empleados coincidentes.
-                  </div>
-                )}
-              </div>
+              <EmployeePickerStep
+                employees={employees}
+                selectedEmployeeId={selectedEmpId}
+                onSelect={(id) => {
+                  setSelectedEmpId(id)
+                  pushRecentEmployeeId(id)
+                }}
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
+                maxHeight="260px"
+              />
             </div>
           )}
 

@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
   Incident,
-  IncidentStatus,
   LeaveIncidentMetadata,
   Organization,
 } from '@/types/employee'
@@ -17,7 +16,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from '@/components/ui/toast'
 import {
@@ -33,7 +31,6 @@ import {
   HeartPulse,
   FileText,
   Ban,
-  X,
   PackageCheck,
   FileBadge,
   GraduationCap,
@@ -47,7 +44,7 @@ import { printWorkCertificateDocument } from '@/lib/incidents/print-work-certifi
 import { printTrainingActDocument } from '@/lib/incidents/print-training-act'
 import { cancelIncidentAction, approveSalaryAdvanceAction } from '@/lib/incidents/actions'
 import { getIncidentCode } from '@/lib/incidents/sequence'
-import { cn } from '@/lib/utils'
+import { DetailModalHeader } from '@/components/shared/DetailModalHeader'
 
 // Subcomponentes de detalle modulares
 import { WarningDetailContent } from './detail/WarningDetailContent'
@@ -623,8 +620,6 @@ export function IncidentDetailModal({
         primaryBtn: 'bg-primary hover:bg-primary/90 text-primary-foreground',
       }
 
-  const TypeIcon = typeConfig.icon
-
   const statusBadgeMap: Record<string, { label: string; badgeClass: string }> = {
     pendiente: {
       label: 'Pendiente',
@@ -659,52 +654,17 @@ export function IncidentDetailModal({
         className="sm:max-w-xl p-0 overflow-hidden border-border/80 gap-0 max-h-[90vh] flex flex-col"
         showCloseButton={false}
       >
-        {/* Cabecera con Tipo de incidencia, Fecha de registro, Badge de estado y Botón de cerrar */}
-        <DialogHeader className={cn("p-6 pb-4 border-b shrink-0 transition-colors", typeConfig.headerBg)}>
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className={cn("p-2.5 rounded-xl border shrink-0 bg-background/80 shadow-2xs", typeConfig.accentText)}>
-                <TypeIcon className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <DialogTitle className="text-base font-bold text-foreground truncate">
-                    {typeConfig.title}
-                  </DialogTitle>
-                  {getIncidentCode(incident) && (
-                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-md bg-background/90 border border-border shadow-2xs text-foreground shrink-0">
-                      {getIncidentCode(incident)}
-                    </span>
-                  )}
-                </div>
-                <DialogDescription className="text-xs text-muted-foreground font-mono mt-0.5 truncate">
-                  Fecha de registro: {incident.created_at ? new Date(incident.created_at).toLocaleDateString('es-EC') : '—'}
-                </DialogDescription>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2.5 shrink-0">
-              <Badge
-                variant="outline"
-                className={cn("text-xs font-medium border capitalize", currentStatusInfo.badgeClass)}
-              >
-                {currentStatusInfo.label}
-              </Badge>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => onOpenChange(false)}
-                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
-                title="Cerrar"
-                aria-label="Cerrar"
-              >
-                <X className="h-4 w-4" />
-                <span className="sr-only">Cerrar</span>
-              </Button>
-            </div>
-          </div>
-        </DialogHeader>
+        <DetailModalHeader
+          icon={typeConfig.icon}
+          title={typeConfig.title}
+          headerBg={typeConfig.headerBg}
+          accentText={typeConfig.accentText}
+          statusLabel={currentStatusInfo.label}
+          statusBadgeClass={currentStatusInfo.badgeClass}
+          documentCode={getIncidentCode(incident)}
+          registeredAtLabel={incident.created_at ? new Date(incident.created_at).toLocaleDateString('es-EC') : '—'}
+          onClose={() => onOpenChange(false)}
+        />
 
         {/* Banner de Anulado si aplica */}
         {isCanceled && (
@@ -856,17 +816,6 @@ export function IncidentDetailModal({
               </>
             )}
 
-            {!isPending && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpenChange(false)}
-                className="cursor-pointer"
-              >
-                Cerrar
-              </Button>
-            )}
           </div>
         </div>
       </DialogContent>

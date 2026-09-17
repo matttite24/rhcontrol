@@ -157,7 +157,7 @@ export function NewShiftRequestButton({
         <DialogContent
           className={cn(
             activeView === 'select'
-              ? 'sm:max-w-lg'
+              ? 'sm:max-w-2xl'
               : activeView === 'solicitud_vacaciones'
                 ? 'sm:max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0'
                 : 'sm:max-w-2xl p-0 overflow-hidden border-border/80 gap-0 max-h-[90vh] flex flex-col'

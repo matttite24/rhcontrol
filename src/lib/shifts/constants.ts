@@ -16,7 +16,7 @@ export const SHIFT_REQUEST_TYPE_OPTIONS: ShiftRequestTypeOption[] = [
   {
     type: 'permiso_laboral',
     title: 'Permiso Laboral',
-    description: 'Solicitud de ausencia por horas o días (calamidad, trámites o citas) y plan de compensación.',
+    description: 'Solicitud de ausencia por horas o días por calamidad, trámites o citas.',
     icon: CalendarOff,
     iconBg: 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20',
     accentHex: '#7c3aed',
@@ -40,7 +40,7 @@ export const SHIFT_REQUEST_TYPE_OPTIONS: ShiftRequestTypeOption[] = [
   {
     type: 'solicitud_vacaciones',
     title: 'Vacaciones',
-    description: 'Descanso anual para empleados con más de 1 año. Período a liquidar y días disponibles.',
+    description: 'Descanso anual para empleados con más de 1 año.',
     icon: Palmtree,
     iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
     accentHex: '#059669',
@@ -48,7 +48,7 @@ export const SHIFT_REQUEST_TYPE_OPTIONS: ShiftRequestTypeOption[] = [
   {
     type: 'incidencia_marcacion',
     title: 'Marcación Biométrica',
-    description: 'Constancia informativa para justificar errores del biométrico: sin marcación, doble marcación o fuera de tiempo.',
+    description: 'Constancia informativa para justificar errores del biométrico.',
     icon: Fingerprint,
     iconBg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
     accentHex: '#e11d48',
