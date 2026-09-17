@@ -587,7 +587,7 @@ export function VacationWizardModal({
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                       <Calendar className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                      Período de Vacaciones (Fecha de Salida y Retorno) <span className="text-rose-500">*</span>
+                      Período de Vacaciones (Primer y Último Día de Descanso) <span className="text-rose-500">*</span>
                     </Label>
                     {startDate && availableDays > 0 && (
                       <button
@@ -622,7 +622,7 @@ export function VacationWizardModal({
                         <span className="font-semibold text-foreground">{formatLongDate(startDate)}</span>
                       </div>
                       <div className="p-2.5 rounded-lg border bg-muted/20">
-                        <span className="text-[10.5px] text-muted-foreground block">Fecha de Retorno:</span>
+                        <span className="text-[10.5px] text-muted-foreground block">Último Día de Vacaciones:</span>
                         <span className="font-semibold text-foreground">
                           {endDate ? formatLongDate(endDate) : '— (Selecciona en el calendario)'}
                         </span>

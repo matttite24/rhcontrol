@@ -54,7 +54,7 @@ export function printVacationDocument(data: PrintVacationData) {
         <td>${formatLongDate(data.startDate)}</td>
       </tr>
       <tr>
-        <td class="key">Fecha de Retorno</td>
+        <td class="key">Último Día de Vacaciones</td>
         <td>${formatLongDate(data.endDate)}</td>
       </tr>
       <tr>

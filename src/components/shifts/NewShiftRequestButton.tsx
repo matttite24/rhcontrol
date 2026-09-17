@@ -159,7 +159,11 @@ export function NewShiftRequestButton({
             activeView === 'select'
               ? 'sm:max-w-2xl'
               : activeView === 'solicitud_vacaciones'
-                ? 'sm:max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0'
+                // Más ancho que el resto de wizards: el selector de rango de
+                // fechas muestra 2 meses lado a lado (ver DateRangePicker),
+                // y con sm:max-w-2xl ese calendario se desbordaba fuera del
+                // modal en vez de quedar contenido dentro de su tarjeta.
+                ? 'sm:max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0'
                 : 'sm:max-w-2xl p-0 overflow-hidden border-border/80 gap-0 max-h-[90vh] flex flex-col'
           )}
           showCloseButton={activeView === 'select'}

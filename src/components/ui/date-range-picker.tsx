@@ -119,7 +119,7 @@ export function DateRangePicker({
           <div className="p-3 bg-muted/20 border-b flex items-center justify-between text-xs">
             <span className="font-semibold text-foreground">Seleccionar período de vacaciones</span>
             <span className="text-[11px] text-muted-foreground font-mono">
-              {!startDate ? 'Haz clic para fecha de salida' : !endDate ? 'Ahora haz clic en fecha de retorno' : displayText}
+              {!startDate ? 'Haz clic para fecha de inicio' : !endDate ? 'Ahora haz clic en fecha de fin' : displayText}
             </span>
           </div>
           <Calendar
