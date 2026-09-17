@@ -11,7 +11,9 @@ interface MarkQuincenaPaidInput {
   // (checkbox marcado en la tabla) — quien no se incluya aquí no queda
   // registrado en quincena_payments y por lo tanto no se le descuenta el
   // anticipo en el Rol de ese mes (ver calculate.ts).
-  employees: { employeeId: string; amount: number }[]
+  // paymentMethod 'Cheque' requiere checkNumber (validado en el modal antes
+  // de llegar aquí, y de nuevo abajo como defensa en profundidad).
+  employees: { employeeId: string; amount: number; paymentMethod: 'Transferencia' | 'Cheque'; checkNumber?: string | null }[]
 }
 
 /**
@@ -32,6 +34,13 @@ export async function markQuincenaPaidAction(
 
     if (input.employees.length === 0) {
       return { success: false, error: 'No hay empleados seleccionados para marcar como pagados.' }
+    }
+
+    const missingCheckNumber = input.employees.find(
+      (e) => e.paymentMethod === 'Cheque' && !e.checkNumber?.trim()
+    )
+    if (missingCheckNumber) {
+      return { success: false, error: 'Falta el número de cheque para uno o más empleados que cobran por cheque.' }
     }
 
     // Defensa en profundidad: aunque la UI ya excluye del checklist a quien
@@ -65,6 +74,8 @@ export async function markQuincenaPaidAction(
       period_year: input.periodYear,
       period_month: input.periodMonth,
       amount: e.amount,
+      payment_method: e.paymentMethod,
+      check_number: e.paymentMethod === 'Cheque' ? e.checkNumber!.trim() : null,
       paid_by: user.id,
       paid_at: new Date().toISOString(),
     }))

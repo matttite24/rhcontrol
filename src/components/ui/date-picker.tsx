@@ -116,6 +116,12 @@ export function DatePicker({
             captionLayout="dropdown"
             startMonth={new Date(1940, 0)}
             endMonth={new Date(2040, 11)}
+            // Sin esto, el calendario siempre abre en el mes actual sin
+            // importar la fecha ya guardada — al editar (ej. fecha de
+            // nacimiento de hace 30 años) obligaba a navegar manualmente mes
+            // a mes desde hoy hasta la fecha real. Con defaultMonth abre
+            // directo en el mes de la fecha seleccionada.
+            defaultMonth={selectedDate}
             disabled={disabledMatchers.length > 0 ? disabledMatchers : undefined}
             autoFocus
           />

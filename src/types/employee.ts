@@ -402,6 +402,8 @@ export interface QuincenaPayment {
   period_year: number
   period_month: number
   amount: number
+  payment_method: 'Transferencia' | 'Cheque'
+  check_number: string | null
   paid_at: string
   paid_by: string | null
   created_at: string

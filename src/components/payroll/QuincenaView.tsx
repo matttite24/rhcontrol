@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import {
   DropdownMenu,
@@ -116,6 +117,9 @@ export function QuincenaView({
   const [closing, setClosing] = useState(false)
   const [noticeModalOpen, setNoticeModalOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  // Número de cheque por empleado (solo aplica a quienes cobran por Cheque),
+  // capturado en el modal de confirmación — ver checkNumbers más abajo.
+  const [checkNumbers, setCheckNumbers] = useState<Record<string, string>>({})
 
   const paidSet = useMemo(() => new Set(paidEmployeeIds), [paidEmployeeIds])
 
@@ -135,30 +139,45 @@ export function QuincenaView({
     router.push(`/payroll/quincena?year=${newYear}&month=${newMonth}`)
   }
 
-  // Empleados sin cédula o sin número de cuenta no pueden ir en el archivo
-  // del banco (columnas CONTRAPARTIDA/NUMERO ID y NUMERO CTA quedarían
-  // vacías) — se marcan en la tabla y se excluyen del conteo exportable, en
-  // vez de generar un TSV con filas inválidas que el banco rechazaría.
-  const { validEmployees, invalidEmployees } = useMemo(() => {
+  // Empleados que cobran por Cheque no van en el TSV bancario (no tienen ni
+  // necesitan cuenta) — se pagan aparte y su "dato faltante" real es el
+  // número de cheque, que se pide al confirmar el pago (ver modal), no la
+  // cédula/cuenta que sí exige un empleado por Transferencia.
+  const isCheckEmployee = (emp: QuincenaEmployee) => emp.payment_type === 'Cheque'
+
+  // Empleados por Transferencia sin cédula o sin número de cuenta no pueden
+  // ir en el archivo del banco (columnas CONTRAPARTIDA/NUMERO ID y NUMERO
+  // CTA quedarían vacías) — se marcan en la tabla y se excluyen del conteo
+  // exportable, en vez de generar un TSV con filas inválidas que el banco
+  // rechazaría.
+  const { validEmployees, invalidEmployees, checkEmployees } = useMemo(() => {
     const valid: QuincenaEmployee[] = []
     const invalid: QuincenaEmployee[] = []
+    const checks: QuincenaEmployee[] = []
     for (const emp of employees) {
-      if (emp.national_id?.trim() && emp.account_number?.trim()) {
+      if (isCheckEmployee(emp)) {
+        checks.push(emp)
+      } else if (emp.national_id?.trim() && emp.account_number?.trim()) {
         valid.push(emp)
       } else {
         invalid.push(emp)
       }
     }
-    return { validEmployees: valid, invalidEmployees: invalid }
+    return { validEmployees: valid, invalidEmployees: invalid, checkEmployees: checks }
   }, [employees])
 
   const selectedEmployees = useMemo(
     () => employees.filter((e) => selectedIds.has(e.id)),
     [employees, selectedIds]
   )
+  // Solo cuentan como "quedará sin marcar" los empleados AÚN NO pagados que
+  // no están seleccionados — alguien ya pagado en un período anterior nunca
+  // debe aparecer aquí como si esta confirmación fuera a dejarlo sin pagar
+  // (ver bug reportado: con 14 ya pagados y 1 pendiente, el modal alertaba
+  // "14 no se marcarán", dando a entender que el proceso se había roto).
   const notSelected = useMemo(
-    () => employees.filter((e) => !selectedIds.has(e.id)),
-    [employees, selectedIds]
+    () => employees.filter((e) => !selectedIds.has(e.id) && !paidSet.has(e.id)),
+    [employees, selectedIds, paidSet]
   )
 
   const totalAmount = selectedEmployees.reduce((sum, e) => sum + (Number(e.biweekly_advance_amount) || 0), 0)
@@ -235,8 +254,16 @@ export function QuincenaView({
     }, 150)
   }
 
+  // Empleados por cheque dentro de la selección actual — el modal les pide
+  // el número de cheque antes de dejar confirmar el pago.
+  const selectedCheckEmployees = useMemo(
+    () => selectedEmployees.filter(isCheckEmployee),
+    [selectedEmployees]
+  )
+  const missingCheckNumbers = selectedCheckEmployees.some((e) => !checkNumbers[e.id]?.trim())
+
   function confirmPay() {
-    if (selectedEmployees.length === 0) return
+    if (selectedEmployees.length === 0 || missingCheckNumbers) return
     startTransition(async () => {
       const result = await markQuincenaPaidAction({
         organizationId,
@@ -245,10 +272,13 @@ export function QuincenaView({
         employees: selectedEmployees.map((e) => ({
           employeeId: e.id,
           amount: Number(e.biweekly_advance_amount) || 0,
+          paymentMethod: isCheckEmployee(e) ? 'Cheque' : 'Transferencia',
+          checkNumber: isCheckEmployee(e) ? checkNumbers[e.id]?.trim() : null,
         })),
       })
       if (result.success) {
         setConfirmOpen(false)
+        setCheckNumbers({})
       } else {
         toast.error(result.error || 'No se pudo registrar el pago. Intenta de nuevo.')
       }
@@ -351,6 +381,12 @@ export function QuincenaView({
               <span className="font-semibold">{invalidEmployees.length} incompletos</span>
             </div>
           )}
+          {checkEmployees.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-sky-700 dark:text-sky-400">
+              <Wallet className="h-3.5 w-3.5" />
+              <span className="font-semibold">{checkEmployees.length} por cheque</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -363,7 +399,7 @@ export function QuincenaView({
             </div>
             <h3 className="font-bold text-base text-foreground">Sin anticipos quincenales configurados</h3>
             <p className="text-xs text-muted-foreground mt-1.5 max-w-xs mx-auto">
-              Configura el "Anticipo Quincenal Recurrente" en la pestaña de Salario de cada empleado para que aparezca aquí.
+              Configura el &quot;Anticipo Quincenal Recurrente&quot; en la pestaña de Salario de cada empleado para que aparezca aquí.
             </p>
           </div>
         ) : (
@@ -393,7 +429,8 @@ export function QuincenaView({
               </TableHeader>
               <TableBody>
                 {employees.map((emp) => {
-                  const isInvalid = !emp.national_id?.trim() || !emp.account_number?.trim()
+                  const isCheck = isCheckEmployee(emp)
+                  const isInvalid = !isCheck && (!emp.national_id?.trim() || !emp.account_number?.trim())
                   const isPaid = paidSet.has(emp.id)
                   const isChecked = selectedIds.has(emp.id)
                   const amount = Number(emp.biweekly_advance_amount) || 0
@@ -443,17 +480,25 @@ export function QuincenaView({
                       </TableCell>
 
                       <TableCell className="py-3.5">
-                        <div className="flex flex-col">
-                          <span className="text-foreground">{emp.bank_name || '—'}</span>
-                          <span className="text-[11px] font-mono text-muted-foreground">
-                            Cód. {emp.bank_code?.trim() || `${DEFAULT_BANK_CODE} (por defecto)`}
-                          </span>
-                        </div>
+                        {isCheck ? (
+                          <span className="text-muted-foreground italic">No aplica (cheque)</span>
+                        ) : (
+                          <div className="flex flex-col">
+                            <span className="text-foreground">{emp.bank_name || '—'}</span>
+                            <span className="text-[11px] font-mono text-muted-foreground">
+                              Cód. {emp.bank_code?.trim() || `${DEFAULT_BANK_CODE} (por defecto)`}
+                            </span>
+                          </div>
+                        )}
                       </TableCell>
 
                       <TableCell className="py-3.5 font-mono text-foreground">
-                        {emp.account_number || (
-                          <span className="text-amber-600 dark:text-amber-400 italic">Sin cuenta</span>
+                        {isCheck ? (
+                          <span className="text-muted-foreground italic font-sans">—</span>
+                        ) : (
+                          emp.account_number || (
+                            <span className="text-amber-600 dark:text-amber-400 italic">Sin cuenta</span>
+                          )
                         )}
                       </TableCell>
 
@@ -476,6 +521,13 @@ export function QuincenaView({
                             className="text-[10px] h-5 px-1.5 font-medium border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/10"
                           >
                             Incompleto
+                          </Badge>
+                        ) : isCheck ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] h-5 px-1.5 font-medium border-sky-500/40 text-sky-700 dark:text-sky-400 bg-sky-500/10"
+                          >
+                            Cheque
                           </Badge>
                         ) : (
                           <Badge
@@ -524,6 +576,29 @@ export function QuincenaView({
               </div>
             </div>
 
+            {selectedCheckEmployees.length > 0 && (
+              <div className="rounded-lg border bg-sky-500/5 border-sky-500/30 px-3.5 py-3 space-y-2.5">
+                <p className="text-xs font-semibold text-sky-800 dark:text-sky-300">
+                  Número de cheque ({selectedCheckEmployees.length} {selectedCheckEmployees.length === 1 ? 'empleado paga' : 'empleados pagan'} por cheque)
+                </p>
+                <div className="space-y-2">
+                  {selectedCheckEmployees.map((e) => (
+                    <div key={e.id} className="flex items-center gap-2.5">
+                      <span className="text-xs text-foreground truncate flex-1">{e.full_name}</span>
+                      <Input
+                        value={checkNumbers[e.id] ?? ''}
+                        onChange={(ev) =>
+                          setCheckNumbers((prev) => ({ ...prev, [e.id]: ev.target.value }))
+                        }
+                        placeholder="N° de cheque"
+                        className="h-8 w-32 text-xs"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {notSelected.length > 0 && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-xs text-amber-800 dark:text-amber-300 space-y-1.5">
                 <div className="flex items-center gap-1.5 font-semibold">
@@ -545,7 +620,13 @@ export function QuincenaView({
               <Button variant="outline" size="sm" onClick={closeConfirm} disabled={isPending} className="cursor-pointer">
                 Cancelar
               </Button>
-              <Button size="sm" onClick={confirmPay} disabled={isPending || selectedEmployees.length === 0} className="gap-2 cursor-pointer">
+              <Button
+                size="sm"
+                onClick={confirmPay}
+                disabled={isPending || selectedEmployees.length === 0 || missingCheckNumbers}
+                className="gap-2 cursor-pointer"
+                title={missingCheckNumbers ? 'Completa el número de cheque de cada empleado que paga así' : undefined}
+              >
                 {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
                 Confirmar Pago
               </Button>
