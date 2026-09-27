@@ -1,9 +1,10 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
-import { Employee, EmployeeDocument, EmployeeDocType } from '@/types/employee'
+import { Employee, EmployeeDocument, EmployeeDocType, Organization } from '@/types/employee'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { DatePicker } from '@/components/ui/date-picker'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/components/ui/toast'
@@ -18,12 +19,28 @@ import {
   ExternalLink,
   Trash2,
   AlertCircle,
-  Plus,
+  Printer,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  printDecimosRequestDocument,
+  DecimosModalidad,
+  DecimosRubro,
+} from '@/lib/employees/print-decimos-request'
+import {
+  printPayrollDiscountAuthorizationDocument,
+  PayrollDiscountConcept,
+} from '@/lib/employees/print-payroll-discount-authorization'
+import { printResignationLetterDocument } from '@/lib/employees/print-resignation-letter'
+import { printBiweeklyPaymentRequestDocument } from '@/lib/employees/print-biweekly-payment-request'
+import {
+  printReserveFundsRequestDocument,
+  ReserveFundsModalidad,
+} from '@/lib/employees/print-reserve-funds-request'
 
 interface EmployeeDocumentsTabProps {
   employee?: Employee
+  organization?: Organization | null
   documents?: EmployeeDocument[]
   readOnly?: boolean
 }
@@ -76,6 +93,7 @@ const REQUIRED_DOCS: RequiredDocConfig[] = [
 
 export function EmployeeDocumentsTab({
   employee,
+  organization,
   documents = [],
   readOnly = false,
 }: EmployeeDocumentsTabProps) {
@@ -106,6 +124,127 @@ export function EmployeeDocumentsTab({
   // `blob:` prefix) — un fileUrl existente que venga de Storage (http(s))
   // nunca debe revocarse, apunta a un recurso real, no a un blob local.
   const createdBlobUrls = useRef<Set<string>>(new Set())
+
+  // Selección para la solicitud de acumulación/mensualización de décimos
+  const [decimosModalidad, setDecimosModalidad] = useState<DecimosModalidad>('acumular')
+  const [decimosRubros, setDecimosRubros] = useState<DecimosRubro[]>(['decima_tercera', 'decima_cuarta'])
+  const [decimosIssueDate, setDecimosIssueDate] = useState(() => new Date().toISOString().slice(0, 10))
+
+  function toggleDecimosRubro(rubro: DecimosRubro) {
+    setDecimosRubros((prev) =>
+      prev.includes(rubro) ? prev.filter((r) => r !== rubro) : [...prev, rubro]
+    )
+  }
+
+  function handleGenerateDecimosRequest() {
+    if (!employee) return
+    if (decimosRubros.length === 0) {
+      toast.info('Selecciona al menos un rubro', 'Elige Décima Tercera y/o Décima Cuarta Remuneración.')
+      return
+    }
+    printDecimosRequestDocument({
+      organization,
+      employeeName: employee.full_name,
+      nationalId: employee.national_id || '',
+      modalidad: decimosModalidad,
+      rubros: decimosRubros,
+      issueDate: decimosIssueDate || undefined,
+    })
+  }
+
+  // Selección para la solicitud de acumulación/pago mensual de fondos de reserva
+  const [reserveFundsModalidad, setReserveFundsModalidad] = useState<ReserveFundsModalidad>('acumular')
+  const [reserveFundsIssueDate, setReserveFundsIssueDate] = useState(() => new Date().toISOString().slice(0, 10))
+
+  function handleGenerateReserveFundsRequest() {
+    if (!employee) return
+    printReserveFundsRequestDocument({
+      organization,
+      employeeName: employee.full_name,
+      nationalId: employee.national_id || '',
+      modalidad: reserveFundsModalidad,
+      issueDate: reserveFundsIssueDate || undefined,
+    })
+  }
+
+  const PAYROLL_DISCOUNT_CONCEPT_OPTIONS: { value: PayrollDiscountConcept; label: string }[] = [
+    { value: 'consumo', label: 'Consumos Internos' },
+    { value: 'faltante_caja', label: 'Faltante de Caja' },
+    { value: 'faltante_inventario', label: 'Faltante de Inventario' },
+    { value: 'alimentacion', label: 'Alimentación' },
+    { value: 'vivienda', label: 'Vivienda' },
+  ]
+  const [discountConcepts, setDiscountConcepts] = useState<PayrollDiscountConcept[]>(['consumo'])
+  const [discountIssueDate, setDiscountIssueDate] = useState(() => new Date().toISOString().slice(0, 10))
+
+  function toggleDiscountConcept(concept: PayrollDiscountConcept) {
+    setDiscountConcepts((prev) =>
+      prev.includes(concept) ? prev.filter((c) => c !== concept) : [...prev, concept]
+    )
+  }
+
+  function handleGeneratePayrollDiscountAuthorization() {
+    if (!employee) return
+    if (discountConcepts.length === 0) {
+      toast.info('Selecciona al menos un concepto', 'Elige el tipo de descuento a autorizar.')
+      return
+    }
+    printPayrollDiscountAuthorizationDocument({
+      organization,
+      employeeName: employee.full_name,
+      nationalId: employee.national_id || '',
+      position: employee.position || '',
+      concepts: discountConcepts,
+      issueDate: discountIssueDate || undefined,
+    })
+  }
+
+  const [biweeklyIssueDate, setBiweeklyIssueDate] = useState(() => new Date().toISOString().slice(0, 10))
+
+  function handleGenerateBiweeklyPaymentRequest() {
+    if (!employee) return
+    printBiweeklyPaymentRequestDocument({
+      organization,
+      employeeName: employee.full_name,
+      nationalId: employee.national_id || '',
+      position: employee.position || '',
+      issueDate: biweeklyIssueDate || undefined,
+    })
+  }
+
+  // Datos variables de la carta de renuncia (no forman parte del expediente del empleado)
+  const [resignationRecipient, setResignationRecipient] = useState('')
+  const [resignationRecipientPosition, setResignationRecipientPosition] = useState('')
+  const [resignationDate, setResignationDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [resignationHasDiscount, setResignationHasDiscount] = useState(false)
+  const [resignationDiscountDays, setResignationDiscountDays] = useState('')
+  const [resignationDiscountStart, setResignationDiscountStart] = useState('')
+  const [resignationDiscountEnd, setResignationDiscountEnd] = useState('')
+
+  function handleGenerateResignationLetter() {
+    if (!employee) return
+    if (!resignationRecipient.trim()) {
+      toast.info('Falta el destinatario', 'Indica a quién va dirigida la carta de renuncia.')
+      return
+    }
+    if (!resignationDate) {
+      toast.info('Falta la fecha de renuncia', 'Indica la fecha efectiva de salida.')
+      return
+    }
+    printResignationLetterDocument({
+      organization,
+      employeeName: employee.full_name,
+      nationalId: employee.national_id || '',
+      position: employee.position || '',
+      recipientName: resignationRecipient.trim(),
+      recipientPosition: resignationRecipientPosition.trim() || undefined,
+      resignationDate,
+      hasPayrollDiscount: resignationHasDiscount,
+      discountDaysCount: resignationHasDiscount ? Number(resignationDiscountDays) || undefined : undefined,
+      discountPeriodStart: resignationHasDiscount ? resignationDiscountStart || undefined : undefined,
+      discountPeriodEnd: resignationHasDiscount ? resignationDiscountEnd || undefined : undefined,
+    })
+  }
 
   function revokeIfOwnBlob(url: string | null) {
     if (url && createdBlobUrls.current.has(url)) {
@@ -298,6 +437,384 @@ export function EmployeeDocumentsTab({
             </div>
           )
         })}
+      </div>
+
+      {/* Generación de Documentos */}
+      <div className="space-y-3">
+        {/* Generar Solicitud de Acumulación / Mensualización de Décimos */}
+        <div className="p-4 rounded-xl border bg-card border-border/80 flex flex-wrap items-end gap-x-6 gap-y-3">
+          <div className="flex items-start gap-3 w-72 shrink-0">
+            <div className="p-2 rounded-lg border bg-primary/10 text-primary border-primary/20 shrink-0 mt-0.5">
+              <Printer className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-foreground">
+                Solicitud de Acumulación / Mensualización de Décimos
+              </span>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                Genera el documento de solicitud con los datos del empleado para su firma.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Modalidad</Label>
+            <div className="flex gap-3 h-8 items-center">
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="radio"
+                  name="decimos-modalidad"
+                  checked={decimosModalidad === 'acumular'}
+                  onChange={() => setDecimosModalidad('acumular')}
+                />
+                Acumular
+              </label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="radio"
+                  name="decimos-modalidad"
+                  checked={decimosModalidad === 'mensualizar'}
+                  onChange={() => setDecimosModalidad('mensualizar')}
+                />
+                Mensualizar
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Rubros</Label>
+            <div className="flex gap-3 h-8 items-center">
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={decimosRubros.includes('decima_tercera')}
+                  onChange={() => toggleDecimosRubro('decima_tercera')}
+                />
+                Décima Tercera
+              </label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={decimosRubros.includes('decima_cuarta')}
+                  onChange={() => toggleDecimosRubro('decima_cuarta')}
+                />
+                Décima Cuarta
+              </label>
+            </div>
+          </div>
+
+          <div className="flex items-end gap-3 ml-auto">
+            <div className="space-y-1.5 w-44">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Fecha
+              </Label>
+              <DatePicker
+                id="decimos_issue_date"
+                name="decimos_issue_date"
+                value={decimosIssueDate}
+                onChange={(val) => setDecimosIssueDate(val)}
+              />
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleGenerateDecimosRequest}
+              disabled={!employee}
+              className="cursor-pointer"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Generar Documento
+            </Button>
+          </div>
+        </div>
+
+        {/* Generar Solicitud de Acumulación / Pago Mensual de Fondos de Reserva */}
+        <div className="p-4 rounded-xl border bg-card border-border/80 flex flex-wrap items-end gap-x-6 gap-y-3">
+          <div className="flex items-start gap-3 w-72 shrink-0">
+            <div className="p-2 rounded-lg border bg-primary/10 text-primary border-primary/20 shrink-0 mt-0.5">
+              <Printer className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-foreground">
+                Solicitud de Fondos de Reserva
+              </span>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                Genera la solicitud del empleado para acumular sus fondos de reserva en el IESS o
+                recibirlos mensualmente junto al rol de pagos.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">Modalidad</Label>
+            <div className="flex gap-3 h-8 items-center">
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="radio"
+                  name="reserve-funds-modalidad"
+                  checked={reserveFundsModalidad === 'acumular'}
+                  onChange={() => setReserveFundsModalidad('acumular')}
+                />
+                Acumular (IESS)
+              </label>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="radio"
+                  name="reserve-funds-modalidad"
+                  checked={reserveFundsModalidad === 'pagar_mensual'}
+                  onChange={() => setReserveFundsModalidad('pagar_mensual')}
+                />
+                Pagar mensual
+              </label>
+            </div>
+          </div>
+
+          <div className="flex items-end gap-3 ml-auto">
+            <div className="space-y-1.5 w-44">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Fecha
+              </Label>
+              <DatePicker
+                id="reserve_funds_issue_date"
+                name="reserve_funds_issue_date"
+                value={reserveFundsIssueDate}
+                onChange={(val) => setReserveFundsIssueDate(val)}
+              />
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleGenerateReserveFundsRequest}
+              disabled={!employee}
+              className="cursor-pointer"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Generar Documento
+            </Button>
+          </div>
+        </div>
+
+        {/* Generar Solicitud y Autorización de Descuento a Rol de Pagos */}
+        <div className="p-4 rounded-xl border bg-card border-border/80 flex flex-wrap items-end gap-x-6 gap-y-3">
+          <div className="flex items-start gap-3 w-72 shrink-0">
+            <div className="p-2 rounded-lg border bg-primary/10 text-primary border-primary/20 shrink-0 mt-0.5">
+              <Printer className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-foreground">
+                Solicitud y Autorización de Descuento a Rol de Pagos
+              </span>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                Genera el documento donde el empleado autoriza el descuento de uno o varios conceptos por rol de pagos.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-1.5 flex-1 min-w-[260px]">
+            <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              Conceptos a autorizar
+            </Label>
+            <div className="flex flex-wrap gap-3 items-center min-h-8">
+              {PAYROLL_DISCOUNT_CONCEPT_OPTIONS.map((opt) => (
+                <label key={opt.value} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={discountConcepts.includes(opt.value)}
+                    onChange={() => toggleDiscountConcept(opt.value)}
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-end gap-3 ml-auto">
+            <div className="space-y-1.5 w-44">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Fecha
+              </Label>
+              <DatePicker
+                id="discount_issue_date"
+                name="discount_issue_date"
+                value={discountIssueDate}
+                onChange={(val) => setDiscountIssueDate(val)}
+              />
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleGeneratePayrollDiscountAuthorization}
+              disabled={!employee}
+              className="cursor-pointer"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Generar Documento
+            </Button>
+          </div>
+        </div>
+
+        {/* Generar Solicitud de Pago Quincenal */}
+        <div className="p-4 rounded-xl border bg-card border-border/80 flex flex-wrap items-end gap-x-6 gap-y-3">
+          <div className="flex items-start gap-3 w-72 shrink-0">
+            <div className="p-2 rounded-lg border bg-primary/10 text-primary border-primary/20 shrink-0 mt-0.5">
+              <Printer className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-foreground">
+                Solicitud de Pago de Remuneración en Quincenas
+              </span>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                Genera la solicitud del empleado para recibir su sueldo mensual fraccionado en dos pagos
+                (día 15 y fin de mes), conforme al Código del Trabajo del Ecuador.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-end gap-3 ml-auto">
+            <div className="space-y-1.5 w-44">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Fecha
+              </Label>
+              <DatePicker
+                id="biweekly_issue_date"
+                name="biweekly_issue_date"
+                value={biweeklyIssueDate}
+                onChange={(val) => setBiweeklyIssueDate(val)}
+              />
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleGenerateBiweeklyPaymentRequest}
+              disabled={!employee}
+              className="cursor-pointer"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              Generar Documento
+            </Button>
+          </div>
+        </div>
+
+        {/* Generar Carta de Renuncia */}
+        <div className="p-4 rounded-xl border bg-card border-border/80 space-y-4">
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+            <div className="flex items-start gap-3 w-72 shrink-0">
+              <div className="p-2 rounded-lg border bg-primary/10 text-primary border-primary/20 shrink-0 mt-0.5">
+                <Printer className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-foreground">Carta de Renuncia</span>
+                <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+                  Genera la carta de renuncia irrevocable del empleado, con autorización opcional de
+                  descuento por días no laborados.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 w-52">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Dirigido a
+              </Label>
+              <Input
+                value={resignationRecipient}
+                onChange={(e) => setResignationRecipient(e.target.value)}
+                placeholder="Nombre del destinatario"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5 w-44">
+              <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Cargo
+              </Label>
+              <Input
+                value={resignationRecipientPosition}
+                onChange={(e) => setResignationRecipientPosition(e.target.value)}
+                placeholder="Ej. Gerente General"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <div className="flex items-end gap-3 ml-auto">
+              <div className="space-y-1.5 w-44">
+                <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  Fecha
+                </Label>
+                <DatePicker
+                  id="resignation_date"
+                  name="resignation_date"
+                  value={resignationDate}
+                  onChange={(val) => setResignationDate(val)}
+                />
+              </div>
+
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleGenerateResignationLetter}
+                disabled={!employee}
+                className="cursor-pointer"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Generar Documento
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-3 pl-[calc(18rem+1.5rem)]">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={resignationHasDiscount}
+                onChange={(e) => setResignationHasDiscount(e.target.checked)}
+              />
+              Incluir autorización de descuento por días no laborados
+            </label>
+
+            {resignationHasDiscount && (
+              <div className="flex flex-wrap gap-4">
+                <div className="space-y-1.5 w-36">
+                  <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    Días no laborados
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={resignationDiscountDays}
+                    onChange={(e) => setResignationDiscountDays(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5 w-36">
+                  <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    Desde
+                  </Label>
+                  <DatePicker
+                    id="resignation_discount_start"
+                    name="resignation_discount_start"
+                    value={resignationDiscountStart}
+                    onChange={(val) => setResignationDiscountStart(val)}
+                  />
+                </div>
+                <div className="space-y-1.5 w-36">
+                  <Label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    Hasta
+                  </Label>
+                  <DatePicker
+                    id="resignation_discount_end"
+                    name="resignation_discount_end"
+                    value={resignationDiscountEnd}
+                    onChange={(val) => setResignationDiscountEnd(val)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -108,6 +108,7 @@ export default async function EmployeeProfilePage({
       <div className="flex-1 w-full px-6 md:px-10 py-6">
         <EmployeeForm
           currentOrgId={currentOrg.id}
+          organization={currentOrg}
           employee={employee}
           initialSalaries={(salaries as EmployeeSalary[]) ?? []}
           initialSchedules={(schedules as EmployeeSchedule[]) ?? []}

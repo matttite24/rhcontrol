@@ -35,9 +35,16 @@ export interface DocumentShellOptions {
   windowTitle: string
   /** HTML del cuerpo (párrafos, tablas, etc.). */
   bodyHtml: string
-  signatures: DocumentSignaturesData
+  /** Omitir cuando el bloque de firmas ya viene incluido en `bodyHtml` (ej. `buildEmployeeSignatureBlock`). */
+  signatures?: DocumentSignaturesData
   /** Pie de página (por defecto: "Documento oficial • {org} • Control de Nómina y Asistencia"). */
   footerNote?: string
+  /** Fecha de emisión (YYYY-MM-DD) a mostrar en el encabezado; por defecto la fecha actual. Permite generar el documento de forma retroactiva. */
+  issueDate?: string
+  /** Oculta la línea "Fecha de registro" del encabezado (por defecto se muestra). Útil cuando la fecha efectiva ya se declara en el cuerpo del documento. */
+  hideIssueDate?: boolean
+  /** Oculta por completo el encabezado institucional (logo, razón social, RUC). En su lugar se muestra `docTypeTitle` como título simple centrado. */
+  hideHeader?: boolean
 }
 
 export function formatLongDate(dateStr: string): string {
@@ -172,7 +179,9 @@ export const DOCUMENT_SHELL_STYLES = `
 `
 
 export function renderDocumentShell(opts: DocumentShellOptions): string {
-  const issueDateFormatted = formatLongDate(new Date().toISOString().split('T')[0])
+  const issueDateFormatted = formatLongDate(
+    opts.issueDate || new Date().toISOString().split('T')[0]
+  )
   const { orgLegalName } = resolveOrgHeaderFields(opts.organization, opts.organizationName)
   const footerNote =
     opts.footerNote || `Documento oficial • ${orgLegalName} • Control de Nómina y Asistencia`
@@ -189,18 +198,21 @@ export function renderDocumentShell(opts: DocumentShellOptions): string {
         </style>
       </head>
       <body>
-        ${buildDocumentHeader({
-          organization: opts.organization,
-          organizationName: opts.organizationName,
-          documentCode: opts.documentCode,
-          issueDateFormatted,
-          accentColor: opts.accentHex,
-          docTypeTitle: opts.docTypeTitle,
-        })}
+        ${opts.hideHeader
+          ? `<div class="doc-type-title" style="--doc-header-accent: ${opts.accentHex}">${opts.docTypeTitle}</div>`
+          : buildDocumentHeader({
+              organization: opts.organization,
+              organizationName: opts.organizationName,
+              documentCode: opts.documentCode,
+              issueDateFormatted,
+              accentColor: opts.accentHex,
+              docTypeTitle: opts.docTypeTitle,
+              hideIssueDate: opts.hideIssueDate,
+            })}
 
         ${opts.bodyHtml}
 
-        ${buildDocumentSignatures(opts.signatures)}
+        ${opts.signatures ? buildDocumentSignatures(opts.signatures) : ''}
 
         <div class="footer-note">${footerNote}</div>
 

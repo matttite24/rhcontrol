@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { saveEmployeeAction } from '@/lib/employees/actions'
-import { Employee, EmployeeInsert, Department, Position, EmployeeSalary, SalaryType, EmployeeSchedule, EmployeeDocument, RotatingShiftPattern, EmployeeRotatingSchedule } from '@/types/employee'
+import { Employee, EmployeeInsert, Department, Position, EmployeeSalary, SalaryType, EmployeeSchedule, EmployeeDocument, RotatingShiftPattern, EmployeeRotatingSchedule, Organization } from '@/types/employee'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { getEmployeeCompleteness, completenessTone, type EmployeeTabKey, type EmployeeCompleteness } from '@/lib/employees/completeness'
 // Cada tab se descarga solo cuando el usuario lo abre (chunk propio), en vez de
@@ -82,6 +82,7 @@ export interface SalaryRowItem {
 
 interface EmployeeFormProps {
   currentOrgId: string
+  organization?: Organization | null
   employee?: Employee
   departments?: Department[]
   positions?: Position[]
@@ -96,6 +97,7 @@ interface EmployeeFormProps {
 
 export function EmployeeForm({
   currentOrgId,
+  organization,
   employee,
   departments = [],
   positions = [],
@@ -429,15 +431,10 @@ export function EmployeeForm({
             </TabsTrigger>
             <TabsTrigger
               value="documents"
-              disabled
-              title="Módulo de documentos en construcción"
-              className="gap-2 text-xs font-semibold cursor-not-allowed opacity-45"
+              className="gap-2 text-xs font-semibold cursor-pointer"
             >
               <FileCheck2 className="h-4 w-4" />
               Documentos
-              <span className="ml-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                Pronto
-              </span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -553,6 +550,7 @@ export function EmployeeForm({
         <TabsContent value="documents" keepMounted={!readOnly} className="focus-visible:outline-none">
           <EmployeeDocumentsTab
             employee={employee}
+            organization={organization}
             readOnly={readOnly}
           />
         </TabsContent>

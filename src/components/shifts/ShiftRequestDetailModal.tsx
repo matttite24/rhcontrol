@@ -194,7 +194,19 @@ export function ShiftRequestDetailModal({
           deductionAmount = Number(((baseSalary / 240) * hours).toFixed(2))
         }
 
-        const now = new Date()
+        // El descuento se aplica en el Rol del MES SIGUIENTE al permiso, no
+        // en el del propio mes del permiso (regla de negocio: el rol de un
+        // mes ya suele estar en curso/por cerrarse cuando se aprueba el
+        // permiso, así que el descuento va al corte siguiente). calculate.ts
+        // filtra las deducciones por rango de fechas del corte comparando
+        // contra `date` — si aquí se guardara la fecha real del permiso, un
+        // permiso de agosto nunca aparecería en el rol de septiembre.
+        // Aritmética en UTC puro (Date.UTC) para no arrastrar el mismo bug
+        // de desfase de zona horaria corregido en calculateVacationPeriod.
+        const [permYear, permMonth] = request.date.split('-').map(Number)
+        const nextMonthDate = new Date(Date.UTC(permYear, permMonth, 1)) // permMonth ya es 1-indexed => mes siguiente
+        const deductionDateIso = nextMonthDate.toISOString().split('T')[0]
+
         await supabase.from('deductions').insert({
           organization_id: request.organization_id,
           employee_id: request.employee_id,
@@ -203,9 +215,9 @@ export function ShiftRequestDetailModal({
           description: `Aprobación de solicitud de permiso laboral: ${request.title}. ${request.reason || ''}`,
           amount: deductionAmount,
           status: 'pendiente',
-          period_month: now.getMonth() + 1,
-          period_year: now.getFullYear(),
-          date: request.date,
+          period_month: nextMonthDate.getUTCMonth() + 1,
+          period_year: nextMonthDate.getUTCFullYear(),
+          date: deductionDateIso,
           metadata: {
             shift_request_id: request.id,
             recovery_method: 'descuento_dia',

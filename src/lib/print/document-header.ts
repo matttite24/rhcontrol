@@ -26,6 +26,8 @@ export interface DocumentHeaderData {
   accentColor?: string
   /** Título del tipo de documento (ej. "Solicitud de Vacaciones"), centrado debajo del encabezado. */
   docTypeTitle?: string
+  /** Oculta la línea "Fecha de registro" (por defecto se muestra). Útil cuando la fecha efectiva ya se declara en el cuerpo del documento. */
+  hideIssueDate?: boolean
 }
 
 export const DOCUMENT_HEADER_STYLES = `
@@ -128,7 +130,7 @@ export function buildDocumentHeader(data: DocumentHeaderData): string {
       </div>
       <div class="doc-header-right">
         ${data.documentCode ? `<div class="doc-header-code">N° ${data.documentCode}</div>` : ''}
-        <div class="doc-header-date">Fecha de registro: ${data.issueDateFormatted}</div>
+        ${data.hideIssueDate ? '' : `<div class="doc-header-date">Fecha de registro: ${data.issueDateFormatted}</div>`}
         ${data.extraRight || ''}
       </div>
     </div>
