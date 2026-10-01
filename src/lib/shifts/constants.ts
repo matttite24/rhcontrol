@@ -67,6 +67,10 @@ export const SHIFT_REQUEST_STATUS_MAP: Record<
     label: 'Aprobado',
     badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50',
   },
+  anulado: {
+    label: 'Anulado',
+    badgeClass: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-900/40 dark:text-slate-400 dark:border-slate-700/50',
+  },
   rechazado: {
     label: 'Rechazado',
     badgeClass: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/50',

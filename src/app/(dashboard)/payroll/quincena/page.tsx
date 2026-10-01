@@ -70,6 +70,11 @@ export default async function QuincenaPage({ searchParams }: QuincenaPageProps) 
   >[]
 
   const paidEmployeeIds = (paymentsData || []).map((p) => p.employee_id as string)
+  // Número de cheque ya registrado por empleado (los pagos por cheque lo reciben después de pagar).
+  const checkNumbers: Record<string, string | null> = {}
+  for (const p of paymentsData || []) {
+    if (p.payment_method === 'Cheque') checkNumbers[p.employee_id as string] = (p.check_number as string | null) ?? null
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
@@ -80,6 +85,7 @@ export default async function QuincenaPage({ searchParams }: QuincenaPageProps) 
         organization={currentOrg}
         organizationId={currentOrg.id}
         paidEmployeeIds={paidEmployeeIds}
+        checkNumbers={checkNumbers}
       />
     </div>
   )

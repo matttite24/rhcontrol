@@ -20,7 +20,7 @@ import { NewShiftRequestButton } from './NewShiftRequestButton'
 import { toast } from '@/components/ui/toast'
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Moon, Filter, Check, ChevronDown, RefreshCw, Palmtree, CalendarSearch, Info, UserX, CalendarOff, Fingerprint } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getInitials } from '@/lib/shifts/format'
+import { getInitials, addDaysToIso, getVacationRange, getLeavePermitRange } from '@/lib/shifts/format'
 
 interface EmployeeWithSchedule extends Employee {
   schedules?: EmployeeSchedule[]
@@ -169,42 +169,6 @@ function formatDateToIso(d: Date) {
   const month = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
-}
-
-/** Suma `days` días a una fecha ISO (YYYY-MM-DD) sin problemas de zona horaria. */
-function addDaysToIso(iso: string, days: number): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  return formatDateToIso(new Date(y, m - 1, d + days))
-}
-
-/**
- * Rango [inicio, fin] (ISO) que cubre una solicitud de vacaciones. Usa
- * `metadata.end_date` si existe; si no, lo deriva de `days_count` (para filas
- * antiguas o guardadas sin fecha de retorno). Si tampoco hay días, cae al día
- * exacto de la solicitud.
- */
-function getVacationRange(r: ShiftRequest): { start: string; end: string } {
-  const start = r.metadata?.start_date || r.date
-  if (r.metadata?.end_date) return { start, end: r.metadata.end_date }
-  const days = Number(r.metadata?.days_count) || 0
-  if (days > 1) return { start, end: addDaysToIso(start, days - 1) }
-  return { start, end: start }
-}
-
-/**
- * Rango [inicio, fin] (ISO) que cubre un permiso laboral por días. A
- * diferencia de vacaciones, `metadata.end_date` en permisos es el día de
- * REINCORPORACIÓN (no un día de ausencia), así que el último día ausente es
- * `end_date - 1`. `requested_days` ya refleja esa resta (ver
- * LeavePermissionWizardModal `calculatedDays`), por lo que el rango de
- * ausencia siempre se deriva de él. Los permisos por horas ocupan un único
- * día exacto.
- */
-function getLeavePermitRange(r: ShiftRequest): { start: string; end: string } {
-  const start = r.metadata?.start_date || r.date
-  const days = Number(r.metadata?.requested_days) || 0
-  if (r.metadata?.leave_unit === 'dias' && days > 1) return { start, end: addDaysToIso(start, days - 1) }
-  return { start, end: start }
 }
 
 interface EmployeeDateRequestIndex {
@@ -922,7 +886,10 @@ export function ShiftCalendarView({
                         const scheduleChangeReq = dayEntry?.scheduleChanges[0]
                         const approvedLeavePermit = dayEntry?.leavePermits.find((r) => r.status === 'aprobado')
                         const pendingLeavePermit = dayEntry?.leavePermits.find((r) => r.status === 'pendiente')
-                        const biometricIncident = dayEntry?.biometricIncidents.find((r) => r.status === 'aprobado')
+                        const biometricIncident =
+                          dayEntry?.biometricIncidents.find((r) => r.status === 'aprobado') ||
+                          dayEntry?.biometricIncidents.find((r) => r.status === 'pendiente')
+                        const isBiometricPending = biometricIncident?.status === 'pendiente'
 
                         const dayChangeDetail: DayChangeDetail | undefined = scheduleChangeReq?.metadata?.day_changes?.find(
                           (dc: DayChangeDetail) => dc.date === isoDate
@@ -1066,11 +1033,16 @@ export function ShiftCalendarView({
                                   <button
                                     type="button"
                                     onClick={() => handleOpenRequest(biometricIncident)}
-                                    className="flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs"
-                                    title="Marcación Biométrica • Clic para ver"
+                                    className={cn(
+                                      "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] border transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
+                                      isBiometricPending
+                                        ? "bg-rose-500/5 border-dashed border-rose-500/30 text-rose-500/80 dark:text-rose-400/80"
+                                        : "bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                                    )}
+                                    title={`Marcación Biométrica ${isBiometricPending ? 'Pendiente de Aprobación' : ''} • Clic para ver`}
                                   >
                                     <Fingerprint className="h-2.5 w-2.5" />
-                                    <span>Marcación</span>
+                                    <span>{isBiometricPending ? 'Marcación Pend.' : 'Marcación'}</span>
                                   </button>
                                 )}
 
@@ -1089,6 +1061,24 @@ export function ShiftCalendarView({
                                   >
                                     <Clock className="h-2.5 w-2.5" />
                                     <span>+{approvedOvertime.hours}h {isApprovedExtraordinary ? 'Extras' : 'Suple.'}</span>
+                                  </button>
+                                )}
+
+                                {/* Horas extras pendientes en día libre */}
+                                {pendingOvertime && !approvedOvertime && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenRequest(pendingOvertime)}
+                                    className={cn(
+                                      "flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold text-[10px] transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer",
+                                      isPendingExtraordinary
+                                        ? "bg-orange-500/15 border border-orange-500/30 text-orange-600 dark:text-orange-400"
+                                        : "bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400"
+                                    )}
+                                    title={`Horas Extras ${isPendingExtraordinary ? 'Extraordinarias (100%)' : 'Suplementarias (50%)'} Pendientes de Aprobación (${pendingOvertime.hours} hrs) • Clic para autorizar`}
+                                  >
+                                    <Clock className="h-2.5 w-2.5" />
+                                    <span className="whitespace-nowrap">+{pendingOvertime.hours}h Pendiente</span>
                                   </button>
                                 )}
                               </div>
@@ -1174,11 +1164,16 @@ export function ShiftCalendarView({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenRequest(biometricIncident)}
-                                  className="flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-400 transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs"
-                                  title="Marcación Biométrica • Clic para ver"
+                                  className={cn(
+                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] border transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
+                                    isBiometricPending
+                                      ? "bg-rose-500/5 border-dashed border-rose-500/30 text-rose-500/80 dark:text-rose-400/80"
+                                      : "bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                                  )}
+                                  title={`Marcación Biométrica ${isBiometricPending ? 'Pendiente de Aprobación' : ''} • Clic para ver`}
                                 >
                                   <Fingerprint className="h-2.5 w-2.5" />
-                                  <span>Marcación</span>
+                                  <span>{isBiometricPending ? 'Marcación Pend.' : 'Marcación'}</span>
                                 </button>
                               )}
 

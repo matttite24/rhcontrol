@@ -177,6 +177,7 @@ export default async function ShiftRequestsPage({ searchParams }: ShiftRequestsP
               { value: 'pendiente', label: 'Pendiente' },
               { value: 'aprobado', label: 'Aprobado' },
               { value: 'rechazado', label: 'Rechazado' },
+              { value: 'anulado', label: 'Anulado' },
             ],
           },
         ]}

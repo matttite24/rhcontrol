@@ -1211,6 +1211,82 @@ export async function deleteRejectedShiftRequestAction(
   }
 }
 
+/**
+ * Anula una novedad APROBADA que finalmente no se ejecutó (p. ej. se
+ * aprobaron horas extras pero el empleado no fue). A diferencia de
+ * rechazar/eliminar, la solicitud se conserva en modo lectura con status
+ * 'anulado': calendario y nómina solo cuentan 'aprobado', así que dejan de
+ * considerarla sin tener que revisar el rol a mano. Las deducciones aún
+ * pendientes generadas por su aprobación (descuento de permiso) también se
+ * anulan; las ya aplicadas en un rol cerrado se conservan y se avisa.
+ */
+export async function annulShiftRequestAction(
+  requestId: string,
+  reason?: string
+): Promise<{ success: boolean; error?: string; keptAppliedDeductions?: number }> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'No autenticado. Inicia sesión nuevamente.' }
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('shift_requests')
+      .select('id, status, metadata')
+      .eq('id', requestId)
+      .single()
+
+    if (fetchError || !existing) return { success: false, error: 'La solicitud no existe.' }
+    if (existing.status !== 'aprobado') {
+      return { success: false, error: 'Solo se pueden anular novedades aprobadas.' }
+    }
+
+    // El filtro por status evita anular dos veces o una que cambió entre lectura y update.
+    const { data: updated, error } = await supabase
+      .from('shift_requests')
+      .update({
+        status: 'anulado',
+        metadata: {
+          ...(existing.metadata || {}),
+          annulled_at: new Date().toISOString(),
+          annulled_by: user.id,
+          annulled_reason: reason?.trim() || null,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', requestId)
+      .eq('status', 'aprobado')
+      .select('id')
+
+    if (error) return { success: false, error: error.message }
+    if (!updated || updated.length === 0) {
+      return { success: false, error: 'No se pudo anular: la novedad cambió de estado.' }
+    }
+
+    // Deducciones generadas al aprobar (permiso con descuento): anular las pendientes.
+    await supabase
+      .from('deductions')
+      .update({ status: 'anulado' })
+      .eq('metadata->>shift_request_id', requestId)
+      .eq('status', 'pendiente')
+
+    const { count: keptAppliedDeductions } = await supabase
+      .from('deductions')
+      .select('id', { count: 'exact', head: true })
+      .eq('metadata->>shift_request_id', requestId)
+      .eq('status', 'aplicado')
+
+    revalidatePath('/shifts/requests')
+    revalidatePath('/shifts/calendar')
+    revalidatePath('/payroll')
+    return { success: true, keptAppliedDeductions: keptAppliedDeductions ?? 0 }
+  } catch (err: any) {
+    console.error('Catch en annulShiftRequestAction:', err)
+    return { success: false, error: err?.message || 'Error inesperado al anular la novedad' }
+  }
+}
+
 export interface CreateOvertimeRequestParams {
   organizationId: string
   employeeId: string

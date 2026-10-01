@@ -38,9 +38,10 @@ import {
   Fingerprint,
 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { DatePicker } from '@/components/ui/date-picker'
 import { TimePicker } from '@/components/ui/time-picker'
-import { deleteRejectedShiftRequestAction } from '@/lib/shifts/actions'
+import { deleteRejectedShiftRequestAction, annulShiftRequestAction } from '@/lib/shifts/actions'
 import { printOvertimeDocument } from '@/lib/shifts/print-overtime'
 import { printLeavePermissionDocument } from '@/lib/shifts/print-leave-permission'
 import { printScheduleChangeDocument } from '@/lib/shifts/print-schedule-change'
@@ -92,6 +93,9 @@ export function ShiftRequestDetailModal({
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showConfirmDelete, setShowConfirmDelete] = useState(false)
+  const [showConfirmAnnul, setShowConfirmAnnul] = useState(false)
+  const [annulReason, setAnnulReason] = useState('')
+  const [annulling, setAnnulling] = useState(false)
   const [fetchedOrganization, setFetchedOrganization] = useState<Organization | null>(null)
   const [showRecoveryForm, setShowRecoveryForm] = useState(false)
   const [savingRecovery, setSavingRecovery] = useState(false)
@@ -286,6 +290,33 @@ export function ShiftRequestDetailModal({
       toast.error(err.message || 'Error al actualizar el estado.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleAnnul() {
+    if (!request) return
+    setAnnulling(true)
+    try {
+      const result = await annulShiftRequestAction(request.id, annulReason)
+      if (!result.success) {
+        toast.error(result.error || 'No se pudo anular la novedad.')
+        return
+      }
+      toast.success(
+        'Novedad anulada.',
+        result.keptAppliedDeductions
+          ? 'Tenía un descuento ya aplicado en un rol cerrado: no se modifica automáticamente.'
+          : 'Se conserva en modo lectura y ya no cuenta en calendario ni nómina.'
+      )
+      setShowConfirmAnnul(false)
+      setAnnulReason('')
+      onOpenChange(false)
+      router.refresh()
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || 'Error al anular la novedad.')
+    } finally {
+      setAnnulling(false)
     }
   }
 
@@ -874,6 +905,19 @@ export function ShiftRequestDetailModal({
               </Button>
             )}
 
+            {isApproved && !isBiometricIncident && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowConfirmAnnul(true)}
+                className="border-rose-200 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 hover:text-rose-800 dark:hover:text-rose-300 hover:border-rose-300 dark:hover:border-rose-800 transition-colors cursor-pointer gap-1.5 font-medium shadow-2xs"
+              >
+                <XCircle className="h-4 w-4" />
+                Anular
+              </Button>
+            )}
+
             {isRejected && (
               <Button
                 type="button"
@@ -905,6 +949,61 @@ export function ShiftRequestDetailModal({
           </div>
         </div>
       </DialogContent>
+
+      {/* Anulación de una novedad aprobada: se conserva en modo lectura. */}
+      <Dialog open={showConfirmAnnul} onOpenChange={setShowConfirmAnnul}>
+        <DialogContent className="sm:max-w-md p-6">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                <XCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-foreground">
+                  ¿Anular esta novedad aprobada?
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-1">
+                  Dejará de contar en el calendario y en la nómina. La información se conserva en modo lectura.
+                  Esta acción no se puede deshacer.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Motivo de la anulación (opcional)</Label>
+            <Textarea
+              value={annulReason}
+              onChange={(e) => setAnnulReason(e.target.value)}
+              placeholder="Ej. El empleado no asistió"
+              className="text-xs min-h-[70px]"
+            />
+          </div>
+
+          <DialogFooter className="gap-2 mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowConfirmAnnul(false)}
+              disabled={annulling}
+              className="cursor-pointer"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleAnnul}
+              disabled={annulling}
+              className="cursor-pointer gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold"
+            >
+              {annulling && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Sí, anular novedad
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirmación de eliminación permanente — solo aplica a rechazadas. */}
       <Dialog open={showConfirmDelete} onOpenChange={setShowConfirmDelete}>

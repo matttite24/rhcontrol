@@ -244,3 +244,48 @@ export async function generatePayrollReportAction(
     return { success: false, error: 'Ocurrió un error inesperado al generar el rol.' }
   }
 }
+
+/**
+ * Elimina un rol en borrador para poder empezar de nuevo. Solo admite
+ * reportes 'borrador': un rol 'cerrado' o 'pagado' es registro histórico y
+ * no se puede borrar. Los ajustes de Novedades del borrador se eliminan en
+ * cascada (payroll_overtime_adjustments.payroll_report_id).
+ */
+export async function deletePayrollDraftAction(
+  payrollReportId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'No autenticado.' }
+
+    const { data: report } = await supabase
+      .from('payroll_reports')
+      .select('status')
+      .eq('id', payrollReportId)
+      .single()
+
+    if (!report) return { success: false, error: 'Reporte no encontrado.' }
+    if (report.status !== 'borrador') {
+      return { success: false, error: 'Solo se pueden eliminar roles en borrador.' }
+    }
+
+    // El filtro por status evita borrar un rol que se cerró entre la lectura y el delete.
+    const { error } = await supabase
+      .from('payroll_reports')
+      .delete()
+      .eq('id', payrollReportId)
+      .eq('status', 'borrador')
+
+    if (error) return { success: false, error: error.message }
+
+    revalidatePath('/payroll/history')
+    revalidatePath('/payroll')
+    return { success: true }
+  } catch (err) {
+    console.error(err)
+    return { success: false, error: 'Ocurrió un error inesperado al eliminar el borrador.' }
+  }
+}

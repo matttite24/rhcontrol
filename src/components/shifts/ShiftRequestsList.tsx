@@ -144,11 +144,12 @@ export function ShiftRequestsList({
         <Table className="w-full">
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40 text-xs">
-              <TableHead className="w-[13%] pl-6 font-semibold">Emisión</TableHead>
-              <TableHead className="w-[24%] font-semibold">Empleado</TableHead>
-              <TableHead className="w-[34%] font-semibold">Tipo de Novedad</TableHead>
-              <TableHead className="w-[18%] font-semibold">Identificador</TableHead>
-              <TableHead className="w-[11%] pr-6 text-right font-semibold">Acciones</TableHead>
+              <TableHead className="w-[12%] pl-6 font-semibold">Emisión</TableHead>
+              <TableHead className="w-[21%] font-semibold">Empleado</TableHead>
+              <TableHead className="w-[30%] font-semibold">Tipo de Novedad</TableHead>
+              <TableHead className="w-[16%] font-semibold">Fecha Autorizada</TableHead>
+              <TableHead className="w-[14%] font-semibold">Identificador</TableHead>
+              <TableHead className="w-[7%] pr-6 text-right font-semibold">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

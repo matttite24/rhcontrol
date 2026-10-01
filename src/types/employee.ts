@@ -356,7 +356,7 @@ export interface BiometricIncidentMetadata {
 export type IncidentInsert = Omit<Incident, 'id' | 'created_at' | 'updated_at' | 'employee'>
 
 export type ShiftRequestType = 'horas_extras' | 'cambio_horario' | 'permiso_laboral' | 'solicitud_vacaciones' | 'incidencia_marcacion' | 'otro'
-export type ShiftRequestStatus = 'pendiente' | 'aprobado' | 'rechazado'
+export type ShiftRequestStatus = 'pendiente' | 'aprobado' | 'rechazado' | 'anulado'
 
 export interface ShiftRequest {
   id: string

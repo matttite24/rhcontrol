@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input'
 import { PayrollReport, PayrollReportStatus } from '@/types/employee'
 import Link from 'next/link'
 import { Search, Filter, Calendar, Users, DollarSign, Eye, Plus, History, X, FileSpreadsheet } from 'lucide-react'
+import { DeletePayrollDraftButton } from '@/components/payroll/DeletePayrollDraftButton'
 import { NoActiveOrg } from '@/components/org/NoActiveOrg'
 import { cn } from '@/lib/utils'
 
@@ -129,12 +130,12 @@ export default async function PayrollHistoryPage({ searchParams }: PayrollHistor
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40 text-xs">
-                  <TableHead className="w-[30%] pl-6 font-semibold">Reporte / Título</TableHead>
+                  <TableHead className="w-[27%] pl-6 font-semibold">Reporte / Título</TableHead>
                   <TableHead className="w-[20%] font-semibold">Período de Corte</TableHead>
                   <TableHead className="w-[12%] font-semibold">Empleados</TableHead>
                   <TableHead className="w-[14%] font-semibold">Total a Pagar</TableHead>
                   <TableHead className="w-[12%] font-semibold">Estado</TableHead>
-                  <TableHead className="w-[12%] pr-6 text-right font-semibold">Acciones</TableHead>
+                  <TableHead className="w-[15%] pr-6 text-right font-semibold">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -183,13 +184,18 @@ export default async function PayrollHistoryPage({ searchParams }: PayrollHistor
 
                       {/* Acciones */}
                       <TableCell className="pr-6 py-3.5 text-right">
-                        <Link
-                          href={`/payroll/history/${report.id}`}
-                          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), "h-8 text-xs gap-1.5 cursor-pointer")}
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          {report.status === 'borrador' ? 'Continuar revisión' : 'Ver Reporte'}
-                        </Link>
+                        <div className="flex items-center justify-end gap-1">
+                          <Link
+                            href={`/payroll/history/${report.id}`}
+                            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), "h-8 text-xs gap-1.5 cursor-pointer")}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            {report.status === 'borrador' ? 'Continuar revisión' : 'Ver Reporte'}
+                          </Link>
+                          {report.status === 'borrador' && (
+                            <DeletePayrollDraftButton payrollReportId={report.id} title={report.title} />
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   )

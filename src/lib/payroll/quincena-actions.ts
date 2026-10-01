@@ -11,8 +11,8 @@ interface MarkQuincenaPaidInput {
   // (checkbox marcado en la tabla) — quien no se incluya aquí no queda
   // registrado en quincena_payments y por lo tanto no se le descuenta el
   // anticipo en el Rol de ese mes (ver calculate.ts).
-  // paymentMethod 'Cheque' requiere checkNumber (validado en el modal antes
-  // de llegar aquí, y de nuevo abajo como defensa en profundidad).
+  // paymentMethod 'Cheque' ya NO requiere checkNumber al pagar: el número se
+  // registra después con setQuincenaCheckNumberAction, cuando se emite el cheque.
   employees: { employeeId: string; amount: number; paymentMethod: 'Transferencia' | 'Cheque'; checkNumber?: string | null }[]
 }
 
@@ -34,13 +34,6 @@ export async function markQuincenaPaidAction(
 
     if (input.employees.length === 0) {
       return { success: false, error: 'No hay empleados seleccionados para marcar como pagados.' }
-    }
-
-    const missingCheckNumber = input.employees.find(
-      (e) => e.paymentMethod === 'Cheque' && !e.checkNumber?.trim()
-    )
-    if (missingCheckNumber) {
-      return { success: false, error: 'Falta el número de cheque para uno o más empleados que cobran por cheque.' }
     }
 
     // Defensa en profundidad: aunque la UI ya excluye del checklist a quien
@@ -75,7 +68,7 @@ export async function markQuincenaPaidAction(
       period_month: input.periodMonth,
       amount: e.amount,
       payment_method: e.paymentMethod,
-      check_number: e.paymentMethod === 'Cheque' ? e.checkNumber!.trim() : null,
+      check_number: e.paymentMethod === 'Cheque' ? e.checkNumber?.trim() || null : null,
       paid_by: user.id,
       paid_at: new Date().toISOString(),
     }))
@@ -94,5 +87,111 @@ export async function markQuincenaPaidAction(
   } catch (err) {
     console.error('[markQuincenaPaidAction] Error inesperado:', err)
     return { success: false, error: 'Error inesperado al registrar el pago.' }
+  }
+}
+
+interface ReleaseQuincenaPaymentsInput {
+  organizationId: string
+  periodYear: number
+  periodMonth: number
+  employeeIds: string[]
+}
+
+/**
+ * Suelta (revierte) el pago de quincena de los empleados indicados en un
+ * período: elimina su registro de quincena_payments, así vuelven a quedar
+ * "Pendiente" y se pueden pagar de nuevo (p. ej. si se pagó el mes
+ * equivocado). Sin ese registro, calculatePayroll() deja de descontar el
+ * anticipo en el Rol de ese mes. Un rol ya 'cerrado' conserva su snapshot.
+ */
+export async function releaseQuincenaPaymentsAction(
+  input: ReleaseQuincenaPaymentsInput
+): Promise<{ success: boolean; error?: string; releasedCount?: number }> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'No autenticado.' }
+
+    if (input.employeeIds.length === 0) {
+      return { success: false, error: 'No hay pagos seleccionados para soltar.' }
+    }
+
+    const { data, error } = await supabase
+      .from('quincena_payments')
+      .delete()
+      .eq('organization_id', input.organizationId)
+      .eq('period_year', input.periodYear)
+      .eq('period_month', input.periodMonth)
+      .in('employee_id', input.employeeIds)
+      .select('id')
+
+    if (error) {
+      console.error('[releaseQuincenaPaymentsAction] Error al soltar pagos de quincena:', error)
+      return { success: false, error: 'No se pudo soltar el pago. Intenta de nuevo.' }
+    }
+    // Con RLS, un delete sin permiso no falla: simplemente no borra filas.
+    if (!data || data.length === 0) {
+      return { success: false, error: 'No se encontró ningún pago para soltar en este período.' }
+    }
+
+    revalidatePath('/payroll/quincena')
+    revalidatePath('/payroll')
+
+    return { success: true, releasedCount: data.length }
+  } catch (err) {
+    console.error('[releaseQuincenaPaymentsAction] Error inesperado:', err)
+    return { success: false, error: 'Error inesperado al soltar el pago.' }
+  }
+}
+
+interface SetQuincenaCheckNumberInput {
+  organizationId: string
+  periodYear: number
+  periodMonth: number
+  employeeId: string
+  /** Vacío/null borra el número registrado. */
+  checkNumber: string | null
+}
+
+/**
+ * Registra (o corrige) el número de cheque de un pago de quincena ya hecho.
+ * Solo aplica a pagos con payment_method 'Cheque'.
+ */
+export async function setQuincenaCheckNumberAction(
+  input: SetQuincenaCheckNumberInput
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'No autenticado.' }
+
+    const { data, error } = await supabase
+      .from('quincena_payments')
+      .update({ check_number: input.checkNumber?.trim() || null })
+      .eq('organization_id', input.organizationId)
+      .eq('employee_id', input.employeeId)
+      .eq('period_year', input.periodYear)
+      .eq('period_month', input.periodMonth)
+      .eq('payment_method', 'Cheque')
+      .select('id')
+
+    if (error) {
+      console.error('[setQuincenaCheckNumberAction] Error al registrar el cheque:', error)
+      return { success: false, error: 'No se pudo registrar el número de cheque. Intenta de nuevo.' }
+    }
+    // Con RLS, un update sin permiso no falla: simplemente no afecta filas.
+    if (!data || data.length === 0) {
+      return { success: false, error: 'No se encontró el pago por cheque de este empleado en el período.' }
+    }
+
+    revalidatePath('/payroll/quincena')
+    return { success: true }
+  } catch (err) {
+    console.error('[setQuincenaCheckNumberAction] Error inesperado:', err)
+    return { success: false, error: 'Error inesperado al registrar el número de cheque.' }
   }
 }

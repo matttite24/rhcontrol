@@ -30,7 +30,7 @@ import {
   QuincenaTsvRow,
 } from '@/lib/payroll/generate-quincena-tsv'
 import { printQuincenaDocument } from '@/lib/payroll/print-quincena'
-import { markQuincenaPaidAction } from '@/lib/payroll/quincena-actions'
+import { markQuincenaPaidAction, releaseQuincenaPaymentsAction, setQuincenaCheckNumberAction } from '@/lib/payroll/quincena-actions'
 import { QuincenaNoticeModal } from '@/components/payroll/QuincenaNoticeModal'
 import { toast } from '@/components/ui/toast'
 import {
@@ -45,6 +45,8 @@ import {
   CheckCircle2,
   Loader2,
   ImageIcon,
+  Undo2,
+  Pencil,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -72,6 +74,8 @@ interface QuincenaViewProps {
   organizationId: string
   /** Empleados ya marcados como pagados para este año/mes (quincena_payments). */
   paidEmployeeIds: string[]
+  /** Número de cheque registrado por empleado (null = pagado por cheque, aún sin número). */
+  checkNumbers: Record<string, string | null>
 }
 
 const MONTH_OPTIONS = [
@@ -110,16 +114,21 @@ export function QuincenaView({
   organization,
   organizationId,
   paidEmployeeIds,
+  checkNumbers: savedCheckNumbers,
 }: QuincenaViewProps) {
   const router = useRouter()
   const [exporting, setExporting] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [closing, setClosing] = useState(false)
   const [noticeModalOpen, setNoticeModalOpen] = useState(false)
+  // Doble confirmación del período: evita pagar el mes equivocado por error.
+  const [periodConfirmed, setPeriodConfirmed] = useState(false)
+  // Empleados cuyo pago se va a soltar (null = diálogo cerrado).
+  const [releaseIds, setReleaseIds] = useState<string[] | null>(null)
   const [isPending, startTransition] = useTransition()
-  // Número de cheque por empleado (solo aplica a quienes cobran por Cheque),
-  // capturado en el modal de confirmación — ver checkNumbers más abajo.
-  const [checkNumbers, setCheckNumbers] = useState<Record<string, string>>({})
+  // Cheque por registrar: empleado y valor del input del diálogo (el número se
+  // captura DESPUÉS del pago, cuando se emite el cheque).
+  const [checkTarget, setCheckTarget] = useState<QuincenaEmployee | null>(null)
+  const [checkInput, setCheckInput] = useState('')
 
   const paidSet = useMemo(() => new Set(paidEmployeeIds), [paidEmployeeIds])
 
@@ -241,29 +250,65 @@ export function QuincenaView({
   }
 
   function requestPay() {
+    setPeriodConfirmed(false)
     setConfirmOpen(true)
   }
 
   function closeConfirm() {
-    // Igual que en los demás modales de nómina: blurea el contenido del
-    // fondo mientras se confirma cerrar, en vez de simplemente desmontar.
-    setClosing(true)
-    setTimeout(() => {
-      setConfirmOpen(false)
-      setClosing(false)
-    }, 150)
+    setConfirmOpen(false)
   }
 
-  // Empleados por cheque dentro de la selección actual — el modal les pide
-  // el número de cheque antes de dejar confirmar el pago.
-  const selectedCheckEmployees = useMemo(
-    () => selectedEmployees.filter(isCheckEmployee),
-    [selectedEmployees]
-  )
-  const missingCheckNumbers = selectedCheckEmployees.some((e) => !checkNumbers[e.id]?.trim())
+  function openCheckDialog(emp: QuincenaEmployee) {
+    setCheckInput(savedCheckNumbers[emp.id] ?? '')
+    setCheckTarget(emp)
+  }
+
+  function saveCheckNumber() {
+    if (!checkTarget) return
+    startTransition(async () => {
+      const result = await setQuincenaCheckNumberAction({
+        organizationId,
+        periodYear: year,
+        periodMonth: month,
+        employeeId: checkTarget.id,
+        checkNumber: checkInput,
+      })
+      if (result.success) {
+        toast.success('Cheque registrado', `${checkTarget.full_name}: ${checkInput.trim() || 'sin número'}`)
+        setCheckTarget(null)
+        router.refresh()
+      } else {
+        toast.error(result.error || 'No se pudo registrar el número de cheque.')
+      }
+    })
+  }
+
+  function confirmRelease() {
+    if (!releaseIds || releaseIds.length === 0) return
+    startTransition(async () => {
+      const result = await releaseQuincenaPaymentsAction({
+        organizationId,
+        periodYear: year,
+        periodMonth: month,
+        employeeIds: releaseIds,
+      })
+      if (result.success) {
+        // Quedan pendientes de nuevo: se vuelven a marcar para poder pagarlos.
+        setSelectedIds((prev) => new Set([...prev, ...releaseIds]))
+        toast.success(
+          'Pago soltado',
+          `${result.releasedCount} ${result.releasedCount === 1 ? 'empleado vuelve' : 'empleados vuelven'} a Pendiente en ${reference}.`
+        )
+        setReleaseIds(null)
+        router.refresh()
+      } else {
+        toast.error(result.error || 'No se pudo soltar el pago. Intenta de nuevo.')
+      }
+    })
+  }
 
   function confirmPay() {
-    if (selectedEmployees.length === 0 || missingCheckNumbers) return
+    if (selectedEmployees.length === 0) return
     startTransition(async () => {
       const result = await markQuincenaPaidAction({
         organizationId,
@@ -273,12 +318,10 @@ export function QuincenaView({
           employeeId: e.id,
           amount: Number(e.biweekly_advance_amount) || 0,
           paymentMethod: isCheckEmployee(e) ? 'Cheque' : 'Transferencia',
-          checkNumber: isCheckEmployee(e) ? checkNumbers[e.id]?.trim() : null,
         })),
       })
       if (result.success) {
         setConfirmOpen(false)
-        setCheckNumbers({})
       } else {
         toast.error(result.error || 'No se pudo registrar el pago. Intenta de nuevo.')
       }
@@ -316,6 +359,19 @@ export function QuincenaView({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {paidSet.size > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setReleaseIds(employees.filter((e) => paidSet.has(e.id)).map((e) => e.id))}
+                className="gap-2 font-medium cursor-pointer"
+                title={`Revertir los pagos ya registrados de ${reference}`}
+              >
+                <Undo2 className="h-4 w-4" />
+                Soltar pagos ({paidSet.size})
+              </Button>
+            )}
 
             <Button
               onClick={requestPay}
@@ -419,12 +475,12 @@ export function QuincenaView({
                       aria-label="Seleccionar todos los empleados"
                     />
                   </TableHead>
-                  <TableHead className="w-[25%] font-semibold">Empleado</TableHead>
+                  <TableHead className="w-[20%] font-semibold">Empleado</TableHead>
                   <TableHead className="w-[14%] font-semibold">Cédula</TableHead>
                   <TableHead className="w-[15%] font-semibold">Banco</TableHead>
-                  <TableHead className="w-[16%] font-semibold">N° Cuenta</TableHead>
+                  <TableHead className="w-[14%] font-semibold">N° Cuenta</TableHead>
                   <TableHead className="w-[10%] font-semibold">Monto</TableHead>
-                  <TableHead className="w-[9%] pr-6 text-right font-semibold">Estado</TableHead>
+                  <TableHead className="w-[17%] pr-6 text-right font-semibold">Estado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -508,13 +564,40 @@ export function QuincenaView({
 
                       <TableCell className="pr-6 py-3.5 text-right">
                         {isPaid ? (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] h-5 px-1.5 font-medium border-emerald-200 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50 gap-1"
-                          >
-                            <CheckCircle2 className="h-3 w-3" />
-                            Pagado
-                          </Badge>
+                          <div className="flex items-center justify-end gap-1">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] h-5 px-1.5 font-medium border-emerald-200 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50 gap-1"
+                            >
+                              <CheckCircle2 className="h-3 w-3" />
+                              Pagado
+                            </Badge>
+                            {isCheck && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openCheckDialog(emp)}
+                                className={cn(
+                                  'h-6 px-1.5 text-[10px] font-medium gap-1 cursor-pointer',
+                                  !savedCheckNumbers[emp.id] && 'border-sky-500/40 text-sky-700 dark:text-sky-400 bg-sky-500/10'
+                                )}
+                                title={savedCheckNumbers[emp.id] ? 'Editar número de cheque' : 'Registrar número de cheque'}
+                              >
+                                <Pencil className="h-3 w-3" />
+                                {savedCheckNumbers[emp.id] ? `N° ${savedCheckNumbers[emp.id]}` : 'Registrar cheque'}
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setReleaseIds([emp.id])}
+                              className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
+                              title="Soltar pago (volver a Pendiente)"
+                              aria-label={`Soltar el pago de ${emp.full_name}`}
+                            >
+                              <Undo2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         ) : isInvalid ? (
                           <Badge
                             variant="outline"
@@ -554,13 +637,10 @@ export function QuincenaView({
       </div>
 
       {/* Confirmación de pago — avisa quién queda fuera si no está marcado */}
-      <Dialog open={confirmOpen} onOpenChange={(open) => (open ? setConfirmOpen(true) : closeConfirm())}>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent
           showCloseButton={false}
-          className={cn(
-            'sm:max-w-md transition-[filter] duration-150',
-            closing && 'blur-[6px]'
-          )}
+          className="sm:max-w-md"
         >
           <div className="space-y-4">
             <div className="flex items-start gap-3">
@@ -570,34 +650,24 @@ export function QuincenaView({
               <div className="space-y-1">
                 <h3 className="font-bold text-base text-foreground">Confirmar pago de quincena</h3>
                 <p className="text-xs text-muted-foreground">
-                  Se marcarán como pagados <strong>{selectedEmployees.length}</strong> anticipos de <strong>{reference}</strong>, por un total de{' '}
+                  Se marcarán como pagados <strong>{selectedEmployees.length}</strong> anticipos, por un total de{' '}
                   <strong className="text-primary">${formatMoney(totalAmount)}</strong>. Esto habilita el descuento correspondiente en el Rol de fin de mes.
                 </p>
               </div>
             </div>
 
-            {selectedCheckEmployees.length > 0 && (
-              <div className="rounded-lg border bg-sky-500/5 border-sky-500/30 px-3.5 py-3 space-y-2.5">
-                <p className="text-xs font-semibold text-sky-800 dark:text-sky-300">
-                  Número de cheque ({selectedCheckEmployees.length} {selectedCheckEmployees.length === 1 ? 'empleado paga' : 'empleados pagan'} por cheque)
-                </p>
-                <div className="space-y-2">
-                  {selectedCheckEmployees.map((e) => (
-                    <div key={e.id} className="flex items-center gap-2.5">
-                      <span className="text-xs text-foreground truncate flex-1">{e.full_name}</span>
-                      <Input
-                        value={checkNumbers[e.id] ?? ''}
-                        onChange={(ev) =>
-                          setCheckNumbers((prev) => ({ ...prev, [e.id]: ev.target.value }))
-                        }
-                        placeholder="N° de cheque"
-                        className="h-8 w-32 text-xs"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <label className="flex items-start gap-3 rounded-lg border-2 border-primary/40 bg-primary/5 px-3.5 py-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={periodConfirmed}
+                onChange={(e) => setPeriodConfirmed(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-input cursor-pointer accent-primary"
+              />
+              <span className="text-xs text-foreground">
+                Confirmo que estoy pagando el período
+                <span className="block text-sm font-bold text-primary mt-0.5">{reference}</span>
+              </span>
+            </label>
 
             {notSelected.length > 0 && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-xs text-amber-800 dark:text-amber-300 space-y-1.5">
@@ -623,12 +693,85 @@ export function QuincenaView({
               <Button
                 size="sm"
                 onClick={confirmPay}
-                disabled={isPending || selectedEmployees.length === 0 || missingCheckNumbers}
+                disabled={isPending || selectedEmployees.length === 0 || !periodConfirmed}
                 className="gap-2 cursor-pointer"
-                title={missingCheckNumbers ? 'Completa el número de cheque de cada empleado que paga así' : undefined}
+                title={!periodConfirmed ? 'Marca la casilla para confirmar el período' : undefined}
               >
                 {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
                 Confirmar Pago
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Registrar el número de cheque de un pago ya hecho */}
+      <Dialog open={checkTarget !== null} onOpenChange={(open) => !open && setCheckTarget(null)}>
+        <DialogContent showCloseButton={false} className="sm:max-w-sm">
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <h3 className="font-bold text-base text-foreground">Número de cheque</h3>
+              <p className="text-xs text-muted-foreground">
+                {checkTarget?.full_name} · <strong>{reference}</strong>
+              </p>
+            </div>
+            <Input
+              autoFocus
+              value={checkInput}
+              onChange={(e) => setCheckInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveCheckNumber()
+              }}
+              placeholder="N° de cheque"
+              className="h-9 text-sm"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCheckTarget(null)} disabled={isPending} className="cursor-pointer">
+                Cancelar
+              </Button>
+              <Button size="sm" onClick={saveCheckNumber} disabled={isPending} className="gap-2 cursor-pointer">
+                {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Guardar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Soltar pago — revierte el registro para poder volver a pagar */}
+      <Dialog open={releaseIds !== null} onOpenChange={(open) => !open && setReleaseIds(null)}>
+        <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <Undo2 className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-base text-foreground">Soltar pago de quincena</h3>
+                <p className="text-xs text-muted-foreground">
+                  Se revertirá el pago de <strong>{releaseIds?.length ?? 0}</strong>{' '}
+                  {releaseIds?.length === 1 ? 'empleado' : 'empleados'} en{' '}
+                  <strong className="text-primary">{reference}</strong>. Volverán a quedar Pendientes y se dejará de
+                  descontar su anticipo en el Rol de ese mes (si el rol aún no está cerrado).
+                </p>
+              </div>
+            </div>
+
+            <ul className="rounded-lg border bg-muted/30 px-3.5 py-2.5 text-xs list-disc list-inside space-y-0.5 max-h-28 overflow-y-auto">
+              {employees
+                .filter((e) => releaseIds?.includes(e.id))
+                .map((e) => (
+                  <li key={e.id} className="truncate">{e.full_name}</li>
+                ))}
+            </ul>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={() => setReleaseIds(null)} disabled={isPending} className="cursor-pointer">
+                Cancelar
+              </Button>
+              <Button size="sm" onClick={confirmRelease} disabled={isPending} className="gap-2 cursor-pointer">
+                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                Soltar pago
               </Button>
             </div>
           </div>

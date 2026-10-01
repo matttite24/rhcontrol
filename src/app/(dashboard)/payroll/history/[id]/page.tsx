@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PayrollTableView } from '@/components/payroll/PayrollTableView'
+import { DeletePayrollDraftButton } from '@/components/payroll/DeletePayrollDraftButton'
 import { GeneratePayrollButton } from '@/components/payroll/GeneratePayrollButton'
 import { PayrollHistoryPayoutButtons } from '@/components/payroll/PayrollHistoryPayoutButtons'
 import { calculatePayroll } from '@/lib/payroll/calculate'
@@ -185,6 +186,9 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
               endDate={report.end_date}
               organization={currentOrg}
             />
+            {isDraft && (
+              <DeletePayrollDraftButton payrollReportId={report.id} title={report.title} redirectTo="/payroll/history" />
+            )}
             {isDraft && <GeneratePayrollButton payrollReportId={report.id} />}
           </div>
         }

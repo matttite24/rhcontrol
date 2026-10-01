@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { SHIFT_REQUEST_TYPE_OPTIONS, SHIFT_REQUEST_STATUS_MAP } from '@/lib/shifts/constants'
 import { Eye, Pencil, FileText, CalendarClock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getInitials } from '@/lib/shifts/format'
+import { getInitials, formatAuthorizedDates } from '@/lib/shifts/format'
 
 /** Tipos de novedad que hoy soportan edición mientras están 'pendiente'. */
 export const EDITABLE_TYPES = new Set(['horas_extras', 'solicitud_vacaciones'])
@@ -69,6 +69,7 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
     isBiometricIncident && req.status === 'rechazado'
       ? { label: 'Anulado', badgeClass: SHIFT_REQUEST_STATUS_MAP.rechazado.badgeClass }
       : SHIFT_REQUEST_STATUS_MAP[req.status] ?? SHIFT_REQUEST_STATUS_MAP.pendiente
+  const isAnnulled = req.status === 'anulado'
   const displayTitle = req.title ? req.title.replace(/^\[[A-Z]{3}-\d+\]\s*/, '') : ''
 
   // Mismo criterio que el botón "Programar recuperación" en el modal de
@@ -91,7 +92,7 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
   } else if (resolvedType === 'cambio_horario') {
     subtitle = `${req.start_time || ''}${req.end_time ? ` - ${req.end_time}` : ''}`
   } else if (resolvedType === 'horas_extras') {
-    const rateLabel = req.metadata?.overtime_type === 'suplementaria_50' ? '50% Recargo' : '100% Extraordinaria'
+    const rateLabel = req.metadata?.overtime_type === 'suplementaria_50' ? '50%' : '100%'
     subtitle = `${req.hours} hrs (${req.start_time || ''} - ${req.end_time || ''}) • ${rateLabel}`
   } else if (resolvedType === 'solicitud_vacaciones') {
     const days = req.metadata?.days_count || (req.hours ? Math.round(req.hours / 8) : 1)
@@ -102,11 +103,19 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
     subtitle = displayTitle
   }
 
+  const authorized = formatAuthorizedDates(req)
+
   return (
-    <TableRow className="hover:bg-muted/40 transition-colors text-xs">
+    <TableRow
+      className={cn(
+        'hover:bg-muted/40 transition-colors text-xs',
+        // Anuladas: toda la fila en gris para distinguirlas de activas/pendientes
+        isAnnulled && 'bg-muted/30 text-muted-foreground grayscale opacity-60 hover:opacity-100'
+      )}
+    >
       {/* 1. Emisión */}
       <TableCell className="pl-6 py-3.5 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
-        <span className="text-foreground font-medium">{formatEmissionDate(req.created_at || req.date)}</span>
+        <span className={cn("font-medium", !isAnnulled && "text-foreground")}>{formatEmissionDate(req.created_at || req.date)}</span>
       </TableCell>
 
       {/* 2. Empleado */}
@@ -159,6 +168,14 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
         </div>
       </TableCell>
 
+      {/* Fecha(s) autorizada(s): día al que aplica la novedad, distinto de la emisión */}
+      <TableCell className="py-3.5 font-mono text-[11px] whitespace-nowrap">
+        <div className="flex flex-col">
+          <span className="text-foreground font-medium">{authorized[0]}</span>
+          <span className="text-muted-foreground">{authorized[1]}</span>
+        </div>
+      </TableCell>
+
       {/* 4. Identificador: Código + Estado, con el aviso de recuperación pendiente debajo */}
       <TableCell className="py-3.5">
         <div className="flex flex-col gap-1">
@@ -200,12 +217,13 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
           )}
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
             onClick={() => onOpenDetail(req)}
-            className="h-8 text-xs text-primary font-medium hover:text-primary hover:bg-primary/10 gap-1 cursor-pointer"
+            className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10 cursor-pointer"
+            title="Ver detalle"
+            aria-label="Ver detalle"
           >
             <Eye className="h-3.5 w-3.5" />
-            Ver detalle
           </Button>
         </div>
       </TableCell>
