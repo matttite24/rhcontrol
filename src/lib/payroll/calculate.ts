@@ -521,6 +521,8 @@ export function calculatePayroll({
       // drawer — actionsList solo trae un resumen aplanado.
       rawShiftRequests: empShifts,
       rawIncidents: empIncidents,
+      // Descuentos del corte (puntuales + regla recurrente activa) para la pestaña Descuentos.
+      rawDeductions: [...empDeductions, ...(empRecurringRule ? [empRecurringRule] : [])],
 
       details: {
         salaryItems,

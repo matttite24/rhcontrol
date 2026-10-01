@@ -2,7 +2,10 @@
 
 import React, { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShiftRequest, Incident } from '@/types/employee'
+import { ShiftRequest, Incident, Deduction } from '@/types/employee'
+import { DeductionDetailModal } from '@/components/deductions/DeductionDetailModal'
+import { getDeductionCode } from '@/lib/deductions/sequence'
+import { DEDUCTION_TYPE_OPTIONS } from '@/lib/deductions/constants'
 import { ShiftRequestDetailModal } from '@/components/shifts/ShiftRequestDetailModal'
 import { IncidentDetailModal } from '@/components/incidents/IncidentDetailModal'
 import {
@@ -140,6 +143,8 @@ export interface PayrollEmployeeCalculation {
   // una fila de "Documentación y Solicitudes" — ver openActionDetail.
   rawShiftRequests: ShiftRequest[]
   rawIncidents: Incident[]
+  /** Descuentos del corte (puntuales + regla recurrente activa). Ausente en snapshots antiguos. */
+  rawDeductions?: Deduction[]
 
   // Detalles crudos para el desglose del modal
   details: {
@@ -195,13 +200,14 @@ export function PayrollDetailModal({
   hasSavedReport = false,
 }: PayrollDetailModalProps) {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'role' | 'novedades' | 'incidencias'>('role')
+  const [activeTab, setActiveTab] = useState<'role' | 'novedades' | 'incidencias' | 'descuentos'>('role')
 
   // Detalle real de la novedad seleccionada (abre el mismo modal que
   // /shifts/requests o /incidents) — se resuelve por id contra los arrays
   // crudos que vienen en el cálculo, ver rawShiftRequests/rawIncidents.
   const [selectedShiftRequest, setSelectedShiftRequest] = useState<ShiftRequest | null>(null)
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
+  const [selectedDeduction, setSelectedDeduction] = useState<Deduction | null>(null)
 
   // Edición del ajuste de horas efectivas en Novedades: solo un ajuste
   // abierto a la vez, indexado por shift_request_id.
@@ -359,9 +365,9 @@ export function PayrollDetailModal({
               </div>
             </div>
 
-            {/* Selector de Pestañas Integrado: Rol Detalle / Novedades / Incidencias */}
+            {/* Selector de Pestañas Integrado: Rol Detalle / Novedades / Incidencias / Descuentos */}
             <div className="pt-3">
-              <div className="grid grid-cols-3 bg-muted/60 p-1 rounded-xl border border-border/40">
+              <div className="grid grid-cols-4 bg-muted/60 p-1 rounded-xl border border-border/40">
                 <button
                   type="button"
                   onClick={() => setActiveTab('role')}
@@ -407,6 +413,22 @@ export function PayrollDetailModal({
                   <span>Incidencias</span>
                   <span className="px-1.5 py-0.2 rounded-md text-[10px] font-mono bg-muted text-muted-foreground font-semibold">
                     {incidentActions.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('descuentos')}
+                  className={cn(
+                    'flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg h-7 transition-all cursor-pointer select-none',
+                    activeTab === 'descuentos'
+                      ? 'bg-background text-foreground shadow-2xs font-semibold'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <TrendingDown className="h-3.5 w-3.5 text-primary" />
+                  <span>Descuentos</span>
+                  <span className="px-1.5 py-0.2 rounded-md text-[10px] font-mono bg-muted text-muted-foreground font-semibold">
+                    {item.rawDeductions?.length ?? 0}
                   </span>
                 </button>
               </div>
@@ -832,6 +854,94 @@ export function PayrollDetailModal({
                 </div>
               )}
             </div>
+          ) : activeTab === 'descuentos' ? (
+            /* Pestaña Descuentos: los documentos de descuento (faltantes, multas,
+                cuotas de anticipo/crédito, alimentación, etc.) que entran a este
+                corte — antes no aparecían en ningún lado del detalle del rol. */
+            <div className="space-y-4">
+              {(() => {
+                const deductionRows = item.rawDeductions ?? []
+                const typeLabel = (d: Deduction) =>
+                  DEDUCTION_TYPE_OPTIONS.find((t) => t.type === d.deduction_type)?.title ??
+                  (d.deduction_type === 'prestamo' ? 'Anticipo / Préstamo' : 'Otro descuento')
+                // La regla recurrente se cobra por el valor calculado del corte (puede ser por días trabajados).
+                const rowAmount = (d: Deduction) => (d.is_recurring ? item.mealDeductions : Number(d.amount || 0))
+                const total = deductionRows.reduce((s, d) => s + rowAmount(d), 0) + item.biweeklyAdvanceDeducted
+
+                if (deductionRows.length === 0 && item.biweeklyAdvanceDeducted <= 0) {
+                  return (
+                    <div className="p-12 text-center border rounded-xl border-dashed bg-card/40 space-y-2">
+                      <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mx-auto text-muted-foreground">
+                        <Receipt className="h-5 w-5" />
+                      </div>
+                      <h5 className="font-semibold text-foreground text-xs">Sin descuentos en este período</h5>
+                      <p className="text-[11px] text-muted-foreground max-w-xs mx-auto">
+                        El empleado no tiene descuentos registrados en estas fechas.
+                      </p>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="rounded-xl border bg-card divide-y divide-border/60 overflow-hidden shadow-2xs">
+                    {deductionRows.map((d) => {
+                      const code = getDeductionCode(d)
+                      return (
+                        <button
+                          key={d.id}
+                          type="button"
+                          onClick={() => setSelectedDeduction(d)}
+                          className="w-full px-4 py-4 hover:bg-muted/30 transition-colors duration-150 ease-out motion-reduce:transition-none flex items-center gap-4 text-xs text-left cursor-pointer"
+                        >
+                          {code && (
+                            <span className="font-mono text-[11px] font-semibold text-foreground bg-muted/70 border border-border/80 px-1.5 py-0.5 rounded-md tracking-tight shrink-0 shadow-2xs">
+                              {code}
+                            </span>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <span className="block truncate font-semibold text-foreground text-xs" title={d.title}>
+                              {d.title.replace(/^\[[A-Z]{3}-\d+\]\s*/, '')}
+                            </span>
+                            <span className="block truncate text-[11px] text-muted-foreground font-mono mt-1">
+                              {typeLabel(d)} • {d.is_recurring ? 'Recurrente mensual' : formatDateWeekdayEs(d.date)}
+                            </span>
+                          </div>
+                          <span className="font-mono font-semibold text-rose-600 dark:text-rose-400 shrink-0">
+                            -${rowAmount(d).toFixed(2)}
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
+                        </button>
+                      )
+                    })}
+
+                    {item.biweeklyAdvanceDeducted > 0 && (
+                      <div className="px-4 py-4 flex items-center gap-4 text-xs">
+                        <div className="min-w-0 flex-1">
+                          <span className="block font-semibold text-foreground">Anticipo Quincenal</span>
+                          <span className="block text-[11px] text-muted-foreground font-mono mt-1">
+                            Pagado a mitad de mes, descontado aquí
+                          </span>
+                        </div>
+                        <span className="font-mono font-semibold text-rose-600 dark:text-rose-400 shrink-0">
+                          -${item.biweeklyAdvanceDeducted.toFixed(2)}
+                        </span>
+                        <span className="w-3.5 shrink-0" />
+                      </div>
+                    )}
+
+                    <div className="px-4 py-3 flex items-center justify-between bg-muted/30 text-xs">
+                      <span className="font-semibold text-foreground">Total descuentos económicos</span>
+                      <span className="font-mono font-bold text-rose-600 dark:text-rose-400">-${total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )
+              })()}
+              {item.rawDeductions === undefined && item.details.deductionItems.length > 0 && (
+                <p className="text-[11px] text-muted-foreground italic">
+                  Este rol se generó antes de que se guardara el detalle de documentos de descuento.
+                </p>
+              )}
+            </div>
           ) : (
             /* Pestaña Incidencias: documentación no monetaria de solo lectura
                 (permisos, vacaciones, anticipos, sanciones, actas). */
@@ -963,6 +1073,11 @@ export function PayrollDetailModal({
         incident={selectedIncident}
         open={Boolean(selectedIncident)}
         onOpenChange={(o) => { if (!o) setSelectedIncident(null) }}
+      />
+      <DeductionDetailModal
+        deduction={selectedDeduction}
+        open={Boolean(selectedDeduction)}
+        onOpenChange={(o) => { if (!o) setSelectedDeduction(null) }}
       />
     </Sheet>
   )
