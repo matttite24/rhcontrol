@@ -56,7 +56,15 @@ export function PayrollTableView({
   onToggleOne,
   onToggleAll,
 }: PayrollTableViewProps) {
-  const [selectedEmployee, setSelectedEmployee] = useState<PayrollEmployeeCalculation | null>(null)
+  // Se guarda solo el id: el detalle debe leer SIEMPRE el cálculo vigente de
+  // `calculations`. Una copia del objeto quedaría desactualizada tras
+  // router.refresh() (p. ej. al guardar un ajuste en la pestaña Novedades) y
+  // obligaría a recargar la página para ver el cambio.
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
+  const selectedEmployee = React.useMemo(
+    () => calculations.find((c) => c.employeeId === selectedEmployeeId) ?? null,
+    [calculations, selectedEmployeeId]
+  )
   const [modalOpen, setModalOpen] = useState(false)
   // Selección solo se muestra cuando el padre la controla (ver
   // PayrollWorkspace) — en vistas de solo lectura (historial) no se pasan
@@ -76,7 +84,7 @@ export function PayrollTableView({
   }, [someSelected])
 
   function handleOpenDetail(calc: PayrollEmployeeCalculation) {
-    setSelectedEmployee(calc)
+    setSelectedEmployeeId(calc.employeeId)
     setModalOpen(true)
   }
 

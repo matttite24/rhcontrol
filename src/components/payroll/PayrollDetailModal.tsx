@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from '@/components/ui/toast'
 import { upsertOvertimeAdjustmentAction, deleteOvertimeAdjustmentAction } from '@/lib/payroll/actions'
+import { formatDateWeekdayEs } from '@/lib/shifts/format'
 import {
   DollarSign,
   TrendingDown,
@@ -61,6 +62,8 @@ export interface PayrollEmployeeActionItem {
   overtimeAdjustmentReason?: string | null
   /** Horas originalmente autorizadas (antes del ajuste) — solo horas extras. */
   originalHours?: number | null
+  /** Solo permisos laborales: cómo se compensa ('descuento_dia' | 'cargo_vacaciones' | 'recuperacion_dias' | 'sin_descuento'). Con 'descuento_dia', `amount` es lo que se descuenta del rol. */
+  leaveRecoveryMethod?: string | null
 }
 
 export interface PayrollEmployeeCalculation {
@@ -598,12 +601,26 @@ export function PayrollDetailModal({
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.mealDeductions.toFixed(2)}</span>
                       </div>
                     )}
-                    {item.otherDeductions > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Otras Deducciones</span>
-                        <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.otherDeductions.toFixed(2)}</span>
-                      </div>
-                    )}
+                    {item.otherDeductions > 0 && (() => {
+                      // Un renglón por descuento con su motivo, en vez de un total genérico.
+                      const others = item.details.deductionItems.filter((d) => d.type === 'otro' && !d.is_recurring)
+                      if (others.length === 0) {
+                        return (
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Otras Deducciones</span>
+                            <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.otherDeductions.toFixed(2)}</span>
+                          </div>
+                        )
+                      }
+                      return others.map((d, i) => (
+                        <div key={`${d.title}-${d.date}-${i}`} className="flex justify-between items-center gap-3">
+                          <span className="text-muted-foreground min-w-0 truncate" title={d.title}>
+                            {d.title.replace(/^\[[A-Z]{3}-\d+\]\s*/, '')}
+                          </span>
+                          <span className="font-mono font-medium text-rose-600 dark:text-rose-400 shrink-0">-${d.amount.toFixed(2)}</span>
+                        </div>
+                      ))
+                    })()}
                     {item.biweeklyAdvanceDeducted > 0 && (
                       <div className="flex justify-between items-center">
                         <span className="text-muted-foreground" title="Anticipo pagado a mitad de mes, descontado aquí para no duplicarlo">
@@ -665,140 +682,140 @@ export function PayrollDetailModal({
                     const isSaving = savingId === act.id
 
                     return (
-                      <div key={act.id} className="p-4 text-xs space-y-2.5">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex items-start gap-3 min-w-0">
-                            <span className="font-mono text-xs font-semibold text-foreground bg-muted/70 border border-border/80 px-2 py-1 rounded-md tracking-tight shrink-0 shadow-2xs">
-                              {act.code}
-                            </span>
-                            <div className="flex flex-col min-w-0">
-                              <button
-                                type="button"
-                                onClick={() => openActionDetail(act)}
-                                className="font-semibold text-foreground text-xs leading-snug text-left hover:text-primary cursor-pointer"
-                              >
-                                {act.title}
-                              </button>
-                              <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-muted-foreground font-mono">
-                                <span>{act.date}</span>
-                                <span>•</span>
-                                <span className="text-foreground/80">
-                                  Recargo {isExtraordinary ? '100%' : '50%'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              'text-[10px] h-5 px-2 capitalize font-medium border shrink-0',
-                              isApproved
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50'
-                                : 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800/50'
-                            )}
+                      <div key={act.id} className="px-4 py-4 text-xs space-y-3">
+                      <div className="flex items-center gap-4">
+                        <span className="font-mono text-[11px] font-semibold text-foreground bg-muted/70 border border-border/80 px-1.5 py-0.5 rounded-md tracking-tight shrink-0 shadow-2xs">
+                          {act.code}
+                        </span>
+
+                        <div className="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => openActionDetail(act)}
+                            className="block max-w-full truncate font-semibold text-foreground text-xs text-left hover:text-primary cursor-pointer"
+                            title={act.title}
                           >
-                            {act.status}
-                          </Badge>
+                            {act.title.replace(/\s*-\s*\d+%.*$/, '')} el {formatDateWeekdayEs(act.date)}
+                          </button>
+                          <div className="truncate text-[11px] mt-1">
+                            <span className="text-foreground/80">
+                              {isExtraordinary ? '100% Extraordinaria' : '50% Suplementaria'}
+                            </span>
+                            <span className="text-muted-foreground"> - </span>
+                            {!isApproved ? (
+                              <span className="text-muted-foreground italic">
+                                Solo se pueden ajustar horas extras ya aprobadas.
+                              </span>
+                            ) : act.hasOvertimeAdjustment ? (
+                              <span
+                                className="text-amber-700 dark:text-amber-400"
+                                title={act.overtimeAdjustmentReason ? `Motivo: ${act.overtimeAdjustmentReason}` : undefined}
+                              >
+                                Ajustado: <strong className="font-mono">{act.hours} h</strong> de {act.originalHours} · +$
+                                {Number(act.amount).toFixed(2)}
+                                {act.overtimeAdjustmentReason && (
+                                  <span className="text-muted-foreground italic"> — {act.overtimeAdjustmentReason}</span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">
+                                <strong className="font-mono text-foreground">{act.hours} h</strong> autorizadas · +$
+                                {Number(act.amount ?? 0).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                         </div>
 
-                        {!isApproved ? (
-                          <p className="text-[11px] text-muted-foreground italic pl-1">
-                            Solo se pueden ajustar horas extras ya aprobadas.
-                          </p>
-                        ) : isEditing ? (
-                          <div className="rounded-lg border bg-muted/20 p-3 space-y-2.5">
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min={0}
-                                max={act.originalHours ?? undefined}
-                                step={0.25}
-                                value={actualHoursInput}
-                                onChange={(e) => setActualHoursInput(e.target.value)}
-                                className="h-8 w-24 text-xs font-mono"
-                                autoFocus
-                              />
-                              <span className="text-[11px] text-muted-foreground">
-                                de {act.originalHours ?? act.hours ?? 0} horas autorizadas
-                              </span>
-                            </div>
-                            <Input
-                              value={reasonInput}
-                              onChange={(e) => setReasonInput(e.target.value)}
-                              placeholder="Motivo del ajuste (ej. según registro del biométrico)"
-                              className="h-8 text-xs"
-                            />
-                            <div className="flex items-center gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => handleSaveAdjustment(act)}
-                                disabled={isSaving}
-                                className="h-7 text-[11px] px-3 bg-amber-600 hover:bg-amber-700 text-white cursor-pointer"
-                              >
-                                {isSaving && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-                                Guardar
-                              </Button>
+                        {isApproved && canEditAdjustments && (
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => startEditingAdjustment(act)}
+                              disabled={isSaving || isEditing}
+                              className="h-6 px-2 text-[11px] cursor-pointer gap-1"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              {act.hasOvertimeAdjustment ? 'Editar' : 'Ajustar'}
+                            </Button>
+                            {act.hasOvertimeAdjustment && (
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setEditingId(null)}
-                                disabled={isSaving}
-                                className="h-7 text-[11px] px-3 cursor-pointer"
+                                onClick={() => handleRemoveAdjustment(act)}
+                                disabled={isSaving || isEditing}
+                                className="h-6 px-2 text-[11px] cursor-pointer gap-1 text-muted-foreground hover:text-destructive"
                               >
-                                Cancelar
+                                <RotateCcw className="h-3 w-3" />
+                                Quitar
                               </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between gap-3 pl-1">
-                            <div className="text-[11px]">
-                              {act.hasOvertimeAdjustment ? (
-                                <span className="text-amber-700 dark:text-amber-400">
-                                  Ajustado: <strong className="font-mono">{act.hours} hrs</strong> efectivas de{' '}
-                                  {act.originalHours} autorizadas · +${Number(act.amount).toFixed(2)} al rol
-                                  {act.overtimeAdjustmentReason && (
-                                    <span className="text-muted-foreground italic"> — "{act.overtimeAdjustmentReason}"</span>
-                                  )}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">
-                                  <strong className="font-mono text-foreground">{act.hours} hrs</strong> autorizadas ·
-                                  +${Number(act.amount ?? 0).toFixed(2)} al rol
-                                </span>
-                              )}
-                            </div>
-                            {canEditAdjustments && (
-                              <div className="flex items-center gap-1 shrink-0">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => startEditingAdjustment(act)}
-                                  disabled={isSaving}
-                                  className="h-6 px-2 text-[11px] cursor-pointer gap-1"
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                  {act.hasOvertimeAdjustment ? 'Editar' : 'Ajustar'}
-                                </Button>
-                                {act.hasOvertimeAdjustment && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRemoveAdjustment(act)}
-                                    disabled={isSaving}
-                                    className="h-6 px-2 text-[11px] cursor-pointer gap-1 text-muted-foreground hover:text-destructive"
-                                  >
-                                    <RotateCcw className="h-3 w-3" />
-                                    Quitar
-                                  </Button>
-                                )}
-                              </div>
                             )}
                           </div>
                         )}
+
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-[10px] h-5 px-2 capitalize font-medium border shrink-0',
+                            isApproved
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/50'
+                              : act.status === 'pendiente'
+                              ? 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800/50'
+                              : 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-900/40 dark:text-slate-400 dark:border-slate-700/50'
+                          )}
+                        >
+                          {act.status}
+                        </Badge>
+                      </div>
+
+                      {/* Ajuste: segunda fila (info arriba, ajuste abajo, en una sola línea) */}
+                      {isApproved && isEditing && (
+                          <div className="flex items-center gap-2 pl-1">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={act.originalHours ?? undefined}
+                              step={0.25}
+                              value={actualHoursInput}
+                              onChange={(e) => setActualHoursInput(e.target.value)}
+                              className="h-7 w-20 text-xs font-mono shrink-0"
+                              autoFocus
+                              aria-label="Horas efectivas"
+                            />
+                            <span className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0">
+                              de {act.originalHours ?? act.hours ?? 0} h
+                            </span>
+                            <Input
+                              value={reasonInput}
+                              onChange={(e) => setReasonInput(e.target.value)}
+                              placeholder="Motivo (ej. según biométrico)"
+                              className="h-7 flex-1 min-w-0 text-xs"
+                              aria-label="Motivo del ajuste"
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleSaveAdjustment(act)}
+                              disabled={isSaving}
+                              className="h-7 text-[11px] px-2.5 bg-amber-600 hover:bg-amber-700 text-white cursor-pointer shrink-0"
+                            >
+                              {isSaving && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+                              Guardar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingId(null)}
+                              disabled={isSaving}
+                              className="h-7 text-[11px] px-2 cursor-pointer shrink-0"
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                      )}
                       </div>
                     )
                   })}
@@ -867,9 +884,18 @@ export function PayrollDetailModal({
                               {Boolean(act.amount) && isApproved && (
                                 <>
                                   <span>•</span>
-                                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                                    ${Number(act.amount).toFixed(2)}
-                                  </span>
+                                  {act.leaveRecoveryMethod === 'descuento_dia' ? (
+                                    <span
+                                      className="text-rose-600 dark:text-rose-400 font-semibold"
+                                      title="Valor que se descuenta del rol por este permiso (se aplica en el rol del mes siguiente al permiso)"
+                                    >
+                                      Descuento -${Number(act.amount).toFixed(2)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                      ${Number(act.amount).toFixed(2)}
+                                    </span>
+                                  )}
                                 </>
                               )}
                             </div>

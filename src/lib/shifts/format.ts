@@ -130,3 +130,17 @@ export function formatAuthorizedDates(r: ShiftRequest): [string, string] {
   const years = Array.from(new Set(parts.map((p) => p.y)))
   return [sep(parts.map((p) => `${p.wd} ${p.d} ${p.mon}`)), years.join(' → ')]
 }
+
+const MONTHS_FULL_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
+
+/** "2026-08-03" -> "Lun, 03 de Agosto - 2026" (sin desfase de zona horaria). */
+export function formatDateWeekdayEs(iso: string): string {
+  if (!iso) return '—'
+  const [y, m, d] = iso.split('-').map(Number)
+  if (!y || !m || !d) return iso
+  const wd = WEEKDAYS_ES[new Date(y, m - 1, d).getDay()].slice(0, 3)
+  return `${wd}, ${String(d).padStart(2, '0')} de ${MONTHS_FULL_ES[m - 1]} - ${y}`
+}

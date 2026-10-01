@@ -407,6 +407,27 @@ export function calculatePayroll({
         ? overtimeBreakdown.find((o) => o.shiftRequestId === req.id)
         : undefined
 
+      // Permiso laboral aprobado con descuento en rol: valor que se descuenta.
+      // Si la deducción ya existe en este corte se usa su monto real; si no
+      // (el descuento va al rol del mes SIGUIENTE al permiso, ver
+      // ShiftRequestDetailModal) se calcula con la misma fórmula de la
+      // aprobación para poder mostrarlo igualmente.
+      let leaveDiscount: number | null = null
+      if (isLeave && req.status === 'aprobado' && req.metadata?.recovery_method === 'descuento_dia') {
+        const linked = rawDeductions.filter(
+          (d) => d.metadata?.shift_request_id === req.id && d.status !== 'anulado'
+        )
+        if (linked.length > 0) {
+          leaveDiscount = linked.reduce((sum, d) => sum + Number(d.amount || 0), 0)
+        } else {
+          const base = baseSalary || 460
+          leaveDiscount =
+            req.metadata?.leave_unit === 'dias'
+              ? Number(((base / 30) * (req.metadata?.requested_days || 1)).toFixed(2))
+              : Number(((base / 240) * (req.metadata?.requested_hours || Number(req.hours) || 1)).toFixed(2))
+        }
+      }
+
       actionsList.push({
         id: req.id,
         code: docCode,
@@ -418,7 +439,8 @@ export function calculatePayroll({
         // Si hay ajuste de horas efectivas guardado en Novedades, se muestra
         // ese valor (lo que realmente suma al rol) en vez de lo autorizado.
         hours: overtimeDetail ? overtimeDetail.hours : (req.hours || null),
-        amount: overtimeDetail ? overtimeDetail.amount : null,
+        amount: overtimeDetail ? overtimeDetail.amount : leaveDiscount,
+        leaveRecoveryMethod: isLeave ? (req.metadata?.recovery_method ?? null) : undefined,
         description: req.reason || null,
         sourceType: 'shift_request',
         rawType: req.request_type,
