@@ -391,6 +391,7 @@ export type DeductionType =
   | 'multa'
   | 'prestamo'
   | 'alimentacion'
+  | 'quirografario'
   | 'otro'
 
 export type DeductionStatus = 'pendiente' | 'aplicado' | 'anulado'

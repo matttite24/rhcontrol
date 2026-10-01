@@ -437,7 +437,7 @@ export async function createSalaryAdvanceAction(params: CreateSalaryAdvanceParam
       'anticipo_sueldo'
     )
 
-    const fullTitle = `[${code}] Anticipo de Sueldo: $${params.totalAmount.toFixed(2)} (${count === 1 ? 'Mes en curso' : `${count} cuotas`})`
+    const fullTitle = `[${code}] Anticipo de Sueldo: $${params.totalAmount.toFixed(2)} (${count === 1 ? '1 cuota' : `${count} cuotas`})`
 
     const combinedMetadata = {
       ...(params.metadata || {}),

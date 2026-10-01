@@ -4,6 +4,7 @@ import {
   PackageX,
   AlertTriangle,
   Utensils,
+  Landmark,
 } from 'lucide-react'
 import React from 'react'
 
@@ -48,5 +49,13 @@ export const DEDUCTION_TYPE_OPTIONS: DeductionTypeOption[] = [
     icon: Utensils,
     badgeColor: 'text-emerald-600 dark:text-emerald-400',
     iconBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+  },
+  {
+    type: 'quirografario',
+    title: 'Crédito Quirografario (IESS)',
+    description: 'Préstamo del IESS que se paga por planilla a través del empleador. Permite registrar solo las cuotas faltantes.',
+    icon: Landmark,
+    badgeColor: 'text-sky-600 dark:text-sky-400',
+    iconBg: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20',
   },
 ]

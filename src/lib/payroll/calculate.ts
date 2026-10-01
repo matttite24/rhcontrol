@@ -295,6 +295,9 @@ export function calculatePayroll({
     const loans = empDeductions
       .filter((d) => d.deduction_type === 'prestamo')
       .reduce((sum, d) => sum + Number(d.amount || 0), 0)
+    const iessLoans = empDeductions
+      .filter((d) => d.deduction_type === 'quirografario')
+      .reduce((sum, d) => sum + Number(d.amount || 0), 0)
     const otherDeductions = empDeductions
       .filter((d) => d.deduction_type === 'otro')
       .reduce((sum, d) => sum + Number(d.amount || 0), 0)
@@ -472,6 +475,7 @@ export function calculatePayroll({
       fines,
       loans,
       mealDeductions,
+      iessLoans,
       otherDeductions,
       biweeklyAdvanceDeducted,
       totalDeductions,

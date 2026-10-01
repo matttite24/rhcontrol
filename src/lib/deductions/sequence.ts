@@ -10,6 +10,7 @@ export const DEDUCTION_PREFIX_MAP: Record<DeductionType | string, string> = {
   multa: 'MUL',
   prestamo: 'ANT',
   alimentacion: 'ALI',
+  quirografario: 'QUI',
   otro: 'DED',
 }
 

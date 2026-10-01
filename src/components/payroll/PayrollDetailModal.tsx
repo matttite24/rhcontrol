@@ -107,6 +107,8 @@ export interface PayrollEmployeeCalculation {
   inventoryDeductions: number
   fines: number
   loans: number
+  /** Cuotas de Crédito Quirografario (IESS) descontadas en este corte (ausente en snapshots antiguos). */
+  iessLoans?: number
   mealDeductions: number
   otherDeductions: number
   /** Anticipo quincenal recurrente descontado en este corte (0 si no aplica — ver calculatePayroll). */
@@ -582,6 +584,12 @@ export function PayrollDetailModal({
                       <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Préstamos / Anticipos</span>
                         <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${item.loans.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {(item.iessLoans ?? 0) > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Crédito Quirografario (IESS)</span>
+                        <span className="font-mono font-medium text-rose-600 dark:text-rose-400">-${(item.iessLoans ?? 0).toFixed(2)}</span>
                       </div>
                     )}
                     {item.mealDeductions > 0 && (

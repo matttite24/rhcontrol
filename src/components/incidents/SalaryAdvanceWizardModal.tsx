@@ -492,7 +492,7 @@ export function SalaryAdvanceWizardModal({
                   </Label>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {/* Opción A: Mes en curso (1 sola cuota) */}
+                    {/* Opción A: un solo rol (1 sola cuota) */}
                     <button
                       type="button"
                       onClick={() => {
@@ -509,11 +509,11 @@ export function SalaryAdvanceWizardModal({
                       <div className="flex items-center gap-2">
                         <CreditCard className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                         <span className="text-xs font-bold text-foreground">
-                          Mes en curso (1 sola cuota)
+                          Un solo rol (1 sola cuota)
                         </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        Se descuenta la totalidad (${parsedAmount.toFixed(2)}) en el rol de pagos de este mes.
+                        Se descuenta la totalidad (${parsedAmount.toFixed(2)}) en el rol de pagos del mes que elijas (puede ser un mes pasado).
                       </p>
                     </button>
 
@@ -543,6 +543,42 @@ export function SalaryAdvanceWizardModal({
                     </button>
                   </div>
                 </div>
+
+                {/* Rol de pagos a descontar: permite meses pasados para regularizar */}
+                {modality === 'mes_actual' && (
+                  <div className="p-3.5 rounded-xl border bg-muted/20 space-y-1.5">
+                    <Label className="text-xs font-medium">Rol de Pagos a descontar *</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={startMonth}
+                        onChange={(e) => setStartMonth(parseInt(e.target.value, 10))}
+                        className="w-full h-9 rounded-md border border-input bg-card px-2 text-xs text-foreground cursor-pointer"
+                      >
+                        {MONTH_NAMES.slice(1).map((mName, idx) => (
+                          <option key={idx + 1} value={idx + 1}>
+                            {mName}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={startYear}
+                        onChange={(e) => setStartYear(parseInt(e.target.value, 10))}
+                        className="w-full h-9 rounded-md border border-input bg-card px-2 text-xs text-foreground cursor-pointer"
+                      >
+                        {[currentYear - 1, currentYear, currentYear + 1].map((yr) => (
+                          <option key={yr} value={yr}>
+                            {yr}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {(startYear < currentYear || (startYear === currentYear && startMonth < currentMonth)) && (
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                        Es un mes pasado: el descuento se cargará en el rol de {MONTH_NAMES[startMonth]} {startYear} (regularización).
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Si es en cuotas, selector de cantidad de cuotas */}
                 {modality === 'cuotas' && (
@@ -582,7 +618,7 @@ export function SalaryAdvanceWizardModal({
                             onChange={(e) => setStartYear(parseInt(e.target.value, 10))}
                             className="w-full h-9 rounded-md border border-input bg-card px-2 text-xs text-foreground cursor-pointer"
                           >
-                            {[currentYear, currentYear + 1].map((yr) => (
+                            {[currentYear - 1, currentYear, currentYear + 1].map((yr) => (
                               <option key={yr} value={yr}>
                                 {yr}
                               </option>
@@ -658,7 +694,7 @@ export function SalaryAdvanceWizardModal({
                   <div className="flex items-center justify-between border-b pb-2">
                     <span className="text-muted-foreground text-[11px]">Modalidad:</span>
                     <Badge variant="outline" className="font-medium text-[11px] border-blue-300 text-blue-700 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300">
-                      {count === 1 ? 'Mes en curso (1 cuota)' : `${count} cuotas mensuales`}
+                      {count === 1 ? `Rol de ${MONTH_NAMES[startMonth]} ${startYear} (1 cuota)` : `${count} cuotas mensuales`}
                     </Badge>
                   </div>
 

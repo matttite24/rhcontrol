@@ -24,13 +24,15 @@ const loadCashShortageWizard = () => import('./CashShortageWizardModal').then((m
 const loadDisciplinaryFineWizard = () => import('./DisciplinaryFineWizardModal').then((m) => m.DisciplinaryFineWizardModal)
 const loadInventoryWizard = () => import('./InventoryDeductionWizardModal').then((m) => m.InventoryDeductionWizardModal)
 const loadMealHousingWizard = () => import('./MealHousingDeductionWizardModal').then((m) => m.MealHousingDeductionWizardModal)
+const loadQuirografarioWizard = () => import('./QuirografarioDeductionWizardModal').then((m) => m.QuirografarioDeductionWizardModal)
 
 const CashShortageWizardModal = dynamic(loadCashShortageWizard, { loading: () => wizardLoading })
 const DisciplinaryFineWizardModal = dynamic(loadDisciplinaryFineWizard, { loading: () => wizardLoading })
 const InventoryDeductionWizardModal = dynamic(loadInventoryWizard, { loading: () => wizardLoading })
 const MealHousingDeductionWizardModal = dynamic(loadMealHousingWizard, { loading: () => wizardLoading })
+const QuirografarioDeductionWizardModal = dynamic(loadQuirografarioWizard, { loading: () => wizardLoading })
 
-type ActiveView = 'select' | 'faltante_caja' | 'multa' | 'inventario' | 'alimentacion'
+type ActiveView = 'select' | 'faltante_caja' | 'multa' | 'inventario' | 'alimentacion' | 'quirografario'
 
 interface NewDeductionButtonProps {
   organizationId?: string
@@ -64,6 +66,7 @@ export function NewDeductionButton({
       loadDisciplinaryFineWizard()
       loadInventoryWizard()
       loadMealHousingWizard()
+      loadQuirografarioWizard()
     }
   }, [dialogOpen])
 
@@ -78,7 +81,8 @@ export function NewDeductionButton({
       option.type === 'faltante_caja' ||
       option.type === 'multa' ||
       option.type === 'inventario' ||
-      option.type === 'alimentacion'
+      option.type === 'alimentacion' ||
+      option.type === 'quirografario'
     ) {
       requestCloseRef.current = null
       setActiveView(option.type)
@@ -183,6 +187,17 @@ export function NewDeductionButton({
 
           {activeView === 'alimentacion' && (
             <MealHousingDeductionWizardModal
+              organizationId={organizationId || employees[0]?.organization_id || ''}
+              organizationName={organizationName}
+              employees={employees}
+              onOpenChange={handleWizardOpenChange}
+              onSuccess={() => router.refresh()}
+              onRegisterRequestClose={(fn) => { requestCloseRef.current = fn }}
+            />
+          )}
+
+          {activeView === 'quirografario' && (
+            <QuirografarioDeductionWizardModal
               organizationId={organizationId || employees[0]?.organization_id || ''}
               organizationName={organizationName}
               employees={employees}

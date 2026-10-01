@@ -796,3 +796,142 @@ export async function cancelDeductionAction(
     }
   }
 }
+
+export interface CreateQuirografarioDeductionParams {
+  organizationId: string
+  employeeId: string
+  /**
+   * Valor de cada cuota FALTANTE, en orden (según la tabla de amortización del
+   * IESS: con amortización francesa/alemana las cuotas pueden no ser iguales).
+   * Su longitud debe ser totalInstallments - paidInstallments.
+   */
+  installmentAmounts: number[]
+  /** Plazo total del crédito, en cuotas mensuales. */
+  totalInstallments: number
+  /** Cuotas ya pagadas antes de registrarlo (crédito retroactivo): solo se registran las faltantes. */
+  paidInstallments: number
+  /** Rol (mes/año) en que se descuenta la primera cuota faltante; puede ser un mes pasado. */
+  startMonth: number
+  startYear: number
+  iessReference?: string
+  notes?: string
+}
+
+/**
+ * Registra un Crédito Quirografario del IESS: un préstamo que el IESS cobra
+ * por planilla a través del empleador, que lo descuenta al empleado en el
+ * rol. Se crea UNA deducción por cada cuota faltante (n° paidInstallments+1
+ * hasta totalInstallments), en meses consecutivos desde el rol indicado, para
+ * que calculatePayroll() la tome en el corte de ese mes igual que las cuotas
+ * de un anticipo. Los valores se editan cuota por cuota antes de registrar
+ * (las cuotas del IESS pueden no ser iguales). Si el crédito ya venía en
+ * curso, las cuotas pagadas no se registran. Todas comparten metadata.loan_group_id.
+ */
+export async function createQuirografarioDeductionAction(
+  params: CreateQuirografarioDeductionParams
+): Promise<{ success: boolean; data?: Deduction[]; error?: string }> {
+  try {
+    if (!Number.isInteger(params.totalInstallments) || params.totalInstallments < 1 || params.totalInstallments > 60) {
+      return { success: false, error: 'El plazo debe estar entre 1 y 60 cuotas.' }
+    }
+    if (
+      !Number.isInteger(params.paidInstallments) ||
+      params.paidInstallments < 0 ||
+      params.paidInstallments >= params.totalInstallments
+    ) {
+      return { success: false, error: 'Las cuotas pagadas deben ser menos que el plazo total (debe quedar al menos una cuota por descontar).' }
+    }
+    if (params.installmentAmounts.length !== params.totalInstallments - params.paidInstallments) {
+      return { success: false, error: 'La tabla de amortización no coincide con las cuotas faltantes.' }
+    }
+    if (params.installmentAmounts.some((a) => !(a > 0))) {
+      return { success: false, error: 'Todas las cuotas deben tener un valor mayor a cero.' }
+    }
+    if (params.startMonth < 1 || params.startMonth > 12 || params.startYear < 2020) {
+      return { success: false, error: 'Rol de inicio inválido.' }
+    }
+
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'No autenticado. Inicia sesión nuevamente.' }
+
+    const { code, sequenceNumber } = await getNextDeductionSequenceCode(
+      supabase,
+      params.organizationId,
+      'quirografario'
+    )
+
+    const loanGroupId = crypto.randomUUID()
+    const today = new Date().toISOString().split('T')[0]
+
+    const rows = params.installmentAmounts.map((rawAmount, i) => {
+      const amount = Number(rawAmount.toFixed(2))
+      let m = params.startMonth + i
+      let y = params.startYear
+      while (m > 12) {
+        m -= 12
+        y += 1
+      }
+      const installmentNumber = params.paidInstallments + i + 1
+      const monthStr = String(m).padStart(2, '0')
+      return {
+        organization_id: params.organizationId,
+        employee_id: params.employeeId,
+        deduction_type: 'quirografario',
+        title: `[${code}] Crédito Quirografario (Cuota ${installmentNumber}/${params.totalInstallments})`,
+        description: params.notes?.trim() || null,
+        amount,
+        is_recurring: false,
+        status: 'pendiente',
+        period_month: m,
+        period_year: y,
+        date: `${y}-${monthStr}-01`,
+        metadata: {
+          document_code: code,
+          sequence_number: sequenceNumber,
+          loan_group_id: loanGroupId,
+          installment_number: installmentNumber,
+          total_installments: params.totalInstallments,
+          paid_installments_before: params.paidInstallments,
+          installment_amount: amount,
+          iess_reference: params.iessReference?.trim() || null,
+          issue_date: today,
+          registered_by: user.email || user.id,
+        },
+      }
+    })
+
+    const { data, error } = await supabase
+      .from('deductions')
+      .insert(rows)
+      .select(
+        `
+        *,
+        employee:employees (
+          id,
+          full_name,
+          national_id,
+          department,
+          position,
+          avatar_url
+        )
+      `
+      )
+
+    if (error) {
+      console.error('Error creando crédito quirografario:', error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath('/deductions')
+    revalidatePath('/payroll')
+    revalidatePath(`/employees/${params.employeeId}`)
+
+    return { success: true, data: (data || []) as Deduction[] }
+  } catch (err: any) {
+    console.error('Catch en createQuirografarioDeductionAction:', err)
+    return { success: false, error: err?.message || 'Error inesperado al registrar el crédito quirografario.' }
+  }
+}
