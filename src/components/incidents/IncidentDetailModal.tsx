@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useClosedPayrollLock } from '@/hooks/use-closed-payroll-lock'
+import { ClosedPayrollLockNotice } from '@/components/shared/ClosedPayrollLockNotice'
 import {
   Incident,
   LeaveIncidentMetadata,
@@ -110,6 +112,13 @@ export function IncidentDetailModal({
   const supabase = createClient()
 
   const orgId = incident?.organization_id
+  // Incidencia aprobada/registrada incluida en un rol ya generado: solo lectura.
+  const payrollLock = useClosedPayrollLock(
+    orgId,
+    incident?.employee_id,
+    incident?.start_date,
+    incident?.status === 'aprobado' || incident?.status === 'registrado'
+  )
 
   // La organización activa normalmente llega ya resuelta desde el servidor
   // (evita un round-trip en cada apertura del modal). Solo se refetch como
@@ -749,6 +758,8 @@ export function IncidentDetailModal({
           )}
         </div>
 
+        {payrollLock && <ClosedPayrollLockNotice lock={payrollLock} />}
+
         {/* Footer con Acciones de Aprobación */}
         <div className="p-4 border-t bg-muted/10 flex items-center justify-between gap-2 shrink-0">
           <Button
@@ -765,7 +776,7 @@ export function IncidentDetailModal({
           </Button>
 
           <div className="flex items-center gap-2">
-            {!isCanceled && (
+            {!isCanceled && !payrollLock && (
               <Button
                 type="button"
                 variant="outline"

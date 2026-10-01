@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useClosedPayrollLock } from '@/hooks/use-closed-payroll-lock'
+import { ClosedPayrollLockNotice } from '@/components/shared/ClosedPayrollLockNotice'
 import { Deduction, Organization } from '@/types/employee'
 import {
   Dialog,
@@ -88,6 +90,13 @@ export function DeductionDetailModal({
   const supabase = createClient()
 
   const orgId = deduction?.organization_id
+  // Descuento puntual (no recurrente, no anulado) incluido en un rol ya generado: solo lectura.
+  const payrollLock = useClosedPayrollLock(
+    orgId,
+    deduction?.employee_id,
+    deduction?.date,
+    !!deduction && !deduction.is_recurring && deduction.status !== 'anulado'
+  )
 
   // La organización activa normalmente llega ya resuelta desde el servidor
   // (evita un round-trip en cada apertura del modal). Solo se refetch como
@@ -396,6 +405,8 @@ export function DeductionDetailModal({
             )}
           </div>
 
+          {payrollLock && <ClosedPayrollLockNotice lock={payrollLock} />}
+
           {/* Footer */}
           <div className="p-4 border-t bg-muted/10 flex items-center justify-between gap-2 shrink-0">
             <Button
@@ -411,7 +422,7 @@ export function DeductionDetailModal({
             </Button>
 
             <div className="flex items-center gap-2">
-              {!isCanceled && (
+              {!isCanceled && !payrollLock && (
                 <Button
                   type="button"
                   variant="outline"

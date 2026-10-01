@@ -52,6 +52,8 @@ import { SHIFT_REQUEST_STATUS_MAP } from '@/lib/shifts/constants'
 import { getShiftRequestCode } from '@/lib/incidents/sequence'
 import { getInitials, formatLongDate } from '@/lib/shifts/format'
 import { cn } from '@/lib/utils'
+import { useClosedPayrollLock } from '@/hooks/use-closed-payroll-lock'
+import { ClosedPayrollLockNotice } from '@/components/shared/ClosedPayrollLockNotice'
 
 const DAYS_OF_WEEK_MAP: Record<number, DayOfWeek> = {
   0: 'Domingo',
@@ -114,6 +116,8 @@ export function ShiftRequestDetailModal({
   const supabase = createClient()
 
   const orgId = request?.organization_id
+  // Una novedad aprobada incluida en un rol ya generado queda en solo lectura.
+  const payrollLock = useClosedPayrollLock(orgId, request?.employee_id, request?.date, request?.status === 'aprobado')
 
   // La organización activa normalmente llega ya resuelta desde el servidor
   // (evita un round-trip en cada apertura del modal). Solo se refetch como
@@ -842,6 +846,8 @@ export function ShiftRequestDetailModal({
           </div>
         </div>
 
+        {payrollLock && <ClosedPayrollLockNotice lock={payrollLock} />}
+
         {/* Footer con Acciones de Aprobación */}
         <div className="p-4 border-t bg-muted/10 flex items-center justify-between gap-2 shrink-0">
           <Button
@@ -891,7 +897,7 @@ export function ShiftRequestDetailModal({
               </>
             )}
 
-            {isBiometricIncident && isApproved && (
+            {isBiometricIncident && isApproved && !payrollLock && (
               <Button
                 type="button"
                 variant="outline"
@@ -905,7 +911,7 @@ export function ShiftRequestDetailModal({
               </Button>
             )}
 
-            {isApproved && !isBiometricIncident && (
+            {isApproved && !isBiometricIncident && !payrollLock && (
               <Button
                 type="button"
                 variant="outline"

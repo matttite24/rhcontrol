@@ -8,7 +8,7 @@ import { PayrollWorkspaceProvider, PayrollSaveButtonSlot, PayrollTableSlot, Payr
 import { calculatePayroll } from '@/lib/payroll/calculate'
 import { Employee, EmployeeSalary, Deduction, ShiftRequest, Incident, EmployeeSchedule, QuincenaPayment } from '@/types/employee'
 import Link from 'next/link'
-import { Search, Filter, Calculator, Users, Calendar, FileSpreadsheet, X } from 'lucide-react'
+import { Search, Filter, Calculator, Users, Calendar, FileSpreadsheet, X, AlertTriangle } from 'lucide-react'
 import { NoActiveOrg } from '@/components/org/NoActiveOrg'
 import { cn } from '@/lib/utils'
 
@@ -52,6 +52,26 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
   const departments = (deptData || []).map((d) => d.name)
 
   let filteredCalculations: ReturnType<typeof calculatePayroll> = []
+
+  // Los cortes no pueden solaparse con un rol ya generado (cerrado/pagado) del
+  // mismo alcance: sus registros se contarían en dos roles. La base de datos
+  // lo rechaza al guardar (ver add_payroll_reports_no_overlap.sql); aquí se
+  // avisa de antemano y se deshabilita Guardar Borrador.
+  let overlappingReport: { title: string; start_date: string; end_date: string } | null = null
+  if (hasDateRange) {
+    const { data: overlapData } = await supabase
+      .from('payroll_reports')
+      .select('title, start_date, end_date, department')
+      .eq('organization_id', currentOrg.id)
+      .in('status', ['cerrado', 'pagado'])
+      .lte('start_date', endDate)
+      .gte('end_date', startDate)
+      .order('end_date', { ascending: false })
+    overlappingReport =
+      (overlapData || []).find(
+        (r) => !r.department || !params.department || r.department === params.department
+      ) ?? null
+  }
 
   if (hasDateRange) {
     // Las 4 consultas de abajo son independientes entre sí (ninguna necesita
@@ -207,7 +227,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
               startDate={startDate}
               endDate={endDate}
               department={params.department}
-              calculations={filteredCalculations}
+              calculations={overlappingReport ? [] : filteredCalculations}
             />
           </div>
         }
@@ -240,6 +260,17 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
         submitLabel={hasDateRange ? 'Actualizar' : 'Cargar'}
         counter={hasDateRange ? `${filteredCalculations.length} ${filteredCalculations.length === 1 ? 'empleado' : 'empleados'}` : 'Sin cargar'}
       />
+
+      {overlappingReport && (
+        <div className="mx-6 mt-4 flex items-start gap-2.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-800 dark:text-rose-300">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <p>
+            Este corte ({startDate} al {endDate}) se <strong>solapa</strong> con el rol «{overlappingReport.title}» (
+            {overlappingReport.start_date} al {overlappingReport.end_date}), ya generado. Ajusta las fechas para que
+            el corte empiece el día siguiente al último rol generado; no se puede guardar así.
+          </p>
+        </div>
+      )}
 
       {!hasDateRange ? (
         /* Estado inicial: sin rango de fechas elegido todavía no se ejecuta

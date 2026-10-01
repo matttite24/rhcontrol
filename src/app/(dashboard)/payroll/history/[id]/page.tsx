@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PayrollTableView } from '@/components/payroll/PayrollTableView'
-import { DeletePayrollDraftButton } from '@/components/payroll/DeletePayrollDraftButton'
+import { RefreshPayrollButton } from '@/components/payroll/RefreshPayrollButton'
 import { GeneratePayrollButton } from '@/components/payroll/GeneratePayrollButton'
 import { PayrollHistoryPayoutButtons } from '@/components/payroll/PayrollHistoryPayoutButtons'
 import { calculatePayroll } from '@/lib/payroll/calculate'
@@ -20,9 +20,7 @@ import {
 } from '@/types/employee'
 import { PayrollEmployeeCalculation } from '@/components/payroll/PayrollDetailModal'
 import { Badge } from '@/components/ui/badge'
-import { Button, buttonVariants } from '@/components/ui/button'
-import Link from 'next/link'
-import { ArrowLeft, Calendar, Users, DollarSign, TrendingUp, TrendingDown, Building, History, FileClock } from 'lucide-react'
+import { Calendar, Users, DollarSign, TrendingUp, TrendingDown, Building, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PayrollReportDetailPageProps {
@@ -174,36 +172,16 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
         }
         action={
           <div className="flex items-center gap-2">
-            <Link
-              href="/payroll/history"
-              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), "gap-1.5 cursor-pointer")}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Volver al Historial
-            </Link>
             <PayrollHistoryPayoutButtons
               calculations={calculations}
               endDate={report.end_date}
               organization={currentOrg}
             />
-            {isDraft && (
-              <DeletePayrollDraftButton payrollReportId={report.id} title={report.title} redirectTo="/payroll/history" />
-            )}
+            {isDraft && <RefreshPayrollButton />}
             {isDraft && <GeneratePayrollButton payrollReportId={report.id} />}
           </div>
         }
       />
-
-      {isDraft && (
-        <div className="mx-6 mt-4 flex items-center gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
-          <FileClock className="h-4 w-4 shrink-0" />
-          <p>
-            Este rol está en <strong>borrador</strong>: revisa la pestaña <strong>Novedades</strong> en el detalle de
-            cada empleado para ajustar horas extras que no se cumplieron completamente. Los cambios se recalculan en
-            vivo hasta que pulses <strong>Generar</strong>.
-          </p>
-        </div>
-      )}
 
       {/* Resumen de KPIs */}
       <div className="px-6 py-4 border-b bg-muted/20">

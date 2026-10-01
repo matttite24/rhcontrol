@@ -11,6 +11,7 @@ import {
   ShiftRequest,
   Incident,
   PayrollOvertimeAdjustment,
+  QuincenaPayment,
 } from '@/types/employee'
 
 /**
@@ -160,6 +161,7 @@ export async function generatePayrollReportAction(
       { data: shiftsData },
       { data: incidentsData },
       { data: adjustmentsData },
+      { data: quincenaPaymentsData },
     ] = await Promise.all([
       empQuery,
       supabase
@@ -199,6 +201,15 @@ export async function generatePayrollReportAction(
         .from('payroll_overtime_adjustments')
         .select('*')
         .eq('payroll_report_id', payrollReportId),
+      // Anticipos quincenales pagados en el mes que cierra el corte (igual que
+      // /payroll y /payroll/history/[id]): sin esto, el snapshot final no
+      // descontaría la quincena ya pagada (ver biweeklyAdvanceDeducted).
+      supabase
+        .from('quincena_payments')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('period_year', Number(endDate.split('-')[0]))
+        .eq('period_month', Number(endDate.split('-')[1])),
     ])
 
     const rawEmployees = (employeesData || []) as (Employee & {
@@ -215,6 +226,7 @@ export async function generatePayrollReportAction(
       rawShifts: (shiftsData || []) as ShiftRequest[],
       rawIncidents: (incidentsData || []) as Incident[],
       overtimeAdjustments: (adjustmentsData || []) as PayrollOvertimeAdjustment[],
+      rawQuincenaPayments: (quincenaPaymentsData || []) as QuincenaPayment[],
     })
 
     const totalIncome = calculations.reduce((sum, c) => sum + c.totalIncome, 0)
