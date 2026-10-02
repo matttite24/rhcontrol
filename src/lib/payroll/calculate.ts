@@ -202,7 +202,11 @@ export function calculatePayroll({
       .map((d) => [d.employee_id, d])
   )
 
-  return rawEmployees.map((emp) => {
+  // Un empleado inactivo no entra al rol: si salió, se le paga por Liquidación
+  // (employee_settlements).
+  const payableEmployees = rawEmployees.filter((emp) => emp.status !== 'inactivo')
+
+  return payableEmployees.map((emp) => {
     // a. Salario Base y Bonificaciones
     const salaryItems = (emp.salaries || []).map((s) => ({
       name: s.name || s.salary_type,
