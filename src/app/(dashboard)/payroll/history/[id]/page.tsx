@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PayrollTableView } from '@/components/payroll/PayrollTableView'
+import { fetchCutDeductions } from '@/lib/payroll/cut-deductions'
 import { RefreshPayrollButton } from '@/components/payroll/RefreshPayrollButton'
 import { GeneratePayrollButton } from '@/components/payroll/GeneratePayrollButton'
 import { PayrollHistoryPayoutButtons } from '@/components/payroll/PayrollHistoryPayoutButtons'
@@ -78,13 +79,10 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
       { data: quincenaPaymentsData },
     ] = await Promise.all([
       empQuery,
-      supabase
-        .from('deductions')
-        .select('*')
-        .eq('organization_id', currentOrg.id)
-        .neq('status', 'anulado')
-        .gte('date', report.start_date)
-        .lte('date', report.end_date),
+      fetchCutDeductions(supabase, currentOrg.id, report.start_date, report.end_date, {
+        department: report.department,
+        excludeReportId: report.id,
+      }).then((data) => ({ data })),
       supabase
         .from('deductions')
         .select('*')
@@ -145,6 +143,13 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
   } else {
     calculations = (report.snapshot || []) as PayrollEmployeeCalculation[]
   }
+
+  // Empleados marcados como "revisados" en este rol (indicador visual, no afecta el cálculo).
+  const { data: reviewsData } = await supabase
+    .from('payroll_report_reviews')
+    .select('employee_id')
+    .eq('payroll_report_id', report.id)
+  const reviewedEmployeeIds = (reviewsData || []).map((r) => r.employee_id as string)
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
@@ -235,8 +240,10 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
           startDate={report.start_date}
           endDate={report.end_date}
           payrollReportId={isDraft ? report.id : undefined}
-          organizationId={isDraft ? currentOrg.id : undefined}
+          organizationId={currentOrg.id}
           hasSavedReport
+          reviewReportId={report.id}
+          reviewedEmployeeIds={reviewedEmployeeIds}
         />
       </div>
     </div>

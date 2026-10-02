@@ -95,7 +95,8 @@ export function DeductionDetailModal({
     orgId,
     deduction?.employee_id,
     deduction?.date,
-    !!deduction && !deduction.is_recurring && deduction.status !== 'anulado'
+    !!deduction && !deduction.is_recurring && deduction.status !== 'anulado',
+    { year: deduction?.period_year, month: deduction?.period_month }
   )
 
   // La organización activa normalmente llega ya resuelta desde el servidor

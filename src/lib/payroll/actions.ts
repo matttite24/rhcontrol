@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { calculatePayroll } from '@/lib/payroll/calculate'
+import { fetchCutDeductions } from '@/lib/payroll/cut-deductions'
 import {
   Employee,
   EmployeeSalary,
@@ -164,13 +165,10 @@ export async function generatePayrollReportAction(
       { data: quincenaPaymentsData },
     ] = await Promise.all([
       empQuery,
-      supabase
-        .from('deductions')
-        .select('*')
-        .eq('organization_id', organizationId)
-        .neq('status', 'anulado')
-        .gte('date', startDate)
-        .lte('date', endDate),
+      fetchCutDeductions(supabase, organizationId, startDate, endDate, {
+        department,
+        excludeReportId: payrollReportId,
+      }).then((data) => ({ data })),
       supabase
         .from('deductions')
         .select('*')
@@ -299,5 +297,51 @@ export async function deletePayrollDraftAction(
   } catch (err) {
     console.error(err)
     return { success: false, error: 'Ocurrió un error inesperado al eliminar el borrador.' }
+  }
+}
+
+/**
+ * Marca o desmarca a un empleado como "revisado" dentro de un rol guardado
+ * (borrador o generado). Es solo un indicador visual: no afecta el cálculo ni
+ * el estado del rol, así que también funciona en roles cerrados.
+ */
+export async function setEmployeeReviewedAction(input: {
+  organizationId: string
+  payrollReportId: string
+  employeeId: string
+  reviewed: boolean
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return { success: false, error: 'No autenticado.' }
+
+    if (input.reviewed) {
+      const { error } = await supabase.from('payroll_report_reviews').upsert(
+        {
+          organization_id: input.organizationId,
+          payroll_report_id: input.payrollReportId,
+          employee_id: input.employeeId,
+          reviewed_by: user.id,
+          reviewed_at: new Date().toISOString(),
+        },
+        { onConflict: 'payroll_report_id,employee_id' }
+      )
+      if (error) return { success: false, error: error.message }
+    } else {
+      const { error } = await supabase
+        .from('payroll_report_reviews')
+        .delete()
+        .eq('payroll_report_id', input.payrollReportId)
+        .eq('employee_id', input.employeeId)
+      if (error) return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    console.error(err)
+    return { success: false, error: 'Ocurrió un error inesperado.' }
   }
 }

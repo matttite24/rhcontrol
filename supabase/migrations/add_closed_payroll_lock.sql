@@ -18,7 +18,13 @@
 -- pantalla o acción. No bloquea INSERTs ni la eliminación de un empleado.
 
 -- Rol cerrado/pagado que cubre la fecha de un empleado (null si no hay).
-create or replace function public.closed_payroll_for(p_org uuid, p_employee uuid, p_date date)
+create or replace function public.closed_payroll_for(
+  p_org uuid,
+  p_employee uuid,
+  p_date date,
+  p_period_year integer default null,
+  p_period_month integer default null
+)
 returns table (id uuid, title text, start_date date, end_date date)
 language sql
 stable
@@ -29,7 +35,18 @@ as $$
   from payroll_reports r
   where r.organization_id = p_org
     and r.status in ('cerrado', 'pagado')
-    and p_date between r.start_date and r.end_date
+    and (
+      p_date between r.start_date and r.end_date
+      -- Descuentos: también cuenta su período de rol (ver fetchCutDeductions),
+      -- p. ej. un faltante de caja del 2-oct destinado al rol de septiembre.
+      or (
+        p_period_year is not null
+        and p_period_month is not null
+        and (p_period_year * 12 + p_period_month)
+            between (extract(year from r.start_date)::int * 12 + extract(month from r.start_date)::int)
+                and (extract(year from r.end_date)::int * 12 + extract(month from r.end_date)::int)
+      )
+    )
     and (
       nullif(r.department, '') is null
       or r.department = (select e.department from employees e where e.id = p_employee)
@@ -38,7 +55,7 @@ as $$
   limit 1
 $$;
 
-grant execute on function public.closed_payroll_for(uuid, uuid, date) to authenticated;
+grant execute on function public.closed_payroll_for(uuid, uuid, date, integer, integer) to authenticated;
 
 create or replace function public.enforce_closed_payroll_lock()
 returns trigger
@@ -93,7 +110,9 @@ begin
   from public.closed_payroll_for(
     (v_old->>'organization_id')::uuid,
     (v_old->>'employee_id')::uuid,
-    v_date
+    v_date,
+    case when TG_TABLE_NAME = 'deductions' then (v_old->>'period_year')::int end,
+    case when TG_TABLE_NAME = 'deductions' then (v_old->>'period_month')::int end
   );
 
   if found then

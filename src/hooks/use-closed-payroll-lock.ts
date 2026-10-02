@@ -23,7 +23,9 @@ export function useClosedPayrollLock(
   organizationId: string | null | undefined,
   employeeId: string | null | undefined,
   date: string | null | undefined,
-  enabled: boolean = true
+  enabled: boolean = true,
+  /** Solo descuentos: período de rol (mes/año) al que se destinan, ver fetchCutDeductions. */
+  period?: { year: number | null | undefined; month: number | null | undefined }
 ): ClosedPayrollLock | null {
   const [lock, setLock] = useState<ClosedPayrollLock | null>(null)
 
@@ -35,7 +37,13 @@ export function useClosedPayrollLock(
     }
     const supabase = createClient()
     supabase
-      .rpc('closed_payroll_for', { p_org: organizationId, p_employee: employeeId, p_date: date })
+      .rpc('closed_payroll_for', {
+        p_org: organizationId,
+        p_employee: employeeId,
+        p_date: date,
+        p_period_year: period?.year ?? null,
+        p_period_month: period?.month ?? null,
+      })
       .then(({ data, error }) => {
         if (!active) return
         if (error) {
@@ -49,7 +57,7 @@ export function useClosedPayrollLock(
     return () => {
       active = false
     }
-  }, [organizationId, employeeId, date, enabled])
+  }, [organizationId, employeeId, date, enabled, period?.year, period?.month])
 
   return lock
 }

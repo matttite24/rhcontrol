@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useTransition } from 'react'
 import {
   Table,
   TableBody,
@@ -13,7 +13,9 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { PayrollEmployeeCalculation, PayrollDetailModal } from './PayrollDetailModal'
-import { FileText, Eye, Printer, Download, TrendingUp, TrendingDown, DollarSign } from 'lucide-react'
+import { FileText, Eye, Printer, Download, TrendingUp, TrendingDown, DollarSign, CheckCircle2, Circle } from 'lucide-react'
+import { setEmployeeReviewedAction } from '@/lib/payroll/actions'
+import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 
 interface PayrollTableViewProps {
@@ -25,6 +27,12 @@ interface PayrollTableViewProps {
   organizationId?: string
   /** true si ya existe una fila en payroll_reports (borrador o cerrado) — ver PayrollDetailModal. */
   hasSavedReport?: boolean
+  /**
+   * Marca visual "revisado" por empleado, solo en roles guardados (borrador o
+   * generado) — no afecta el cálculo. Se activa al pasar `reviewReportId`.
+   */
+  reviewReportId?: string
+  reviewedEmployeeIds?: string[]
   /**
    * Selección de empleados a incluir al guardar el rol (ver
    * PayrollWorkspace) — opcionales porque las vistas de solo lectura
@@ -52,6 +60,8 @@ export function PayrollTableView({
   payrollReportId,
   organizationId,
   hasSavedReport = false,
+  reviewReportId,
+  reviewedEmployeeIds,
   selectedIds,
   onToggleOne,
   onToggleAll,
@@ -66,6 +76,40 @@ export function PayrollTableView({
     [calculations, selectedEmployeeId]
   )
   const [modalOpen, setModalOpen] = useState(false)
+
+  // Revisado: estado local optimista; se persiste en payroll_report_reviews.
+  const reviewEnabled = Boolean(reviewReportId && organizationId)
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(() => new Set(reviewedEmployeeIds ?? []))
+  const [, startReviewTransition] = useTransition()
+
+  function toggleReviewed(employeeId: string) {
+    if (!reviewReportId || !organizationId) return
+    const next = !reviewedIds.has(employeeId)
+    setReviewedIds((prev) => {
+      const s = new Set(prev)
+      if (next) s.add(employeeId)
+      else s.delete(employeeId)
+      return s
+    })
+    startReviewTransition(async () => {
+      const result = await setEmployeeReviewedAction({
+        organizationId,
+        payrollReportId: reviewReportId,
+        employeeId,
+        reviewed: next,
+      })
+      if (!result.success) {
+        // Revertir el cambio optimista.
+        setReviewedIds((prev) => {
+          const s = new Set(prev)
+          if (next) s.delete(employeeId)
+          else s.add(employeeId)
+          return s
+        })
+        toast.error('No se pudo guardar la marca de revisado', result.error)
+      }
+    })
+  }
   // Selección solo se muestra cuando el padre la controla (ver
   // PayrollWorkspace) — en vistas de solo lectura (historial) no se pasan
   // estas props y la columna de checkbox no se renderiza.
@@ -117,8 +161,8 @@ export function PayrollTableView({
               <TableHead className="w-[9%] font-semibold">Total Ing.</TableHead>
               <TableHead className="w-[9%] font-semibold">Descuentos</TableHead>
               <TableHead className="w-[10%] font-semibold">Neto Rol</TableHead>
-              <TableHead className="w-[13%] font-semibold">Documentos / Acciones</TableHead>
-              <TableHead className="w-[6%] pr-6 text-right font-semibold">Detalle</TableHead>
+              <TableHead className="w-[13%] font-semibold">Registros</TableHead>
+              <TableHead className={cn('pr-6 text-right font-semibold', reviewEnabled ? 'w-[8%]' : 'w-[6%]')}>Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -132,7 +176,13 @@ export function PayrollTableView({
               const isSelected = selectionEnabled && selectedIds!.has(calc.employeeId)
 
               return (
-                <TableRow key={calc.employeeId} className="hover:bg-muted/40 transition-colors text-xs">
+                <TableRow
+                  key={calc.employeeId}
+                  className={cn(
+                    'hover:bg-muted/40 transition-colors text-xs',
+                    reviewEnabled && reviewedIds.has(calc.employeeId) && 'bg-emerald-500/5'
+                  )}
+                >
                   {selectionEnabled && (
                     <TableCell className="pl-6 py-3.5">
                       <input
@@ -147,7 +197,14 @@ export function PayrollTableView({
                   {/* Empleado */}
                   <TableCell className={cn('py-3.5', !selectionEnabled && 'pl-6')}>
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8 ring-1 ring-border shrink-0">
+                      <Avatar
+                        className={cn(
+                          'h-8 w-8 shrink-0 transition-shadow duration-150 motion-reduce:transition-none',
+                          reviewEnabled && reviewedIds.has(calc.employeeId)
+                            ? 'ring-2 ring-emerald-500'
+                            : 'ring-1 ring-border'
+                        )}
+                      >
                         <AvatarImage src={calc.avatarUrl ?? undefined} alt={calc.fullName} />
                         <AvatarFallback className="text-[10px] font-semibold">
                           {getInitials(calc.fullName)}
@@ -227,6 +284,24 @@ export function PayrollTableView({
 
                   {/* Detalle */}
                   <TableCell className="pr-6 py-3.5 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                    {/* Revisado (indicador visual, no afecta el cálculo) */}
+                    {reviewEnabled && (
+                      <button
+                        type="button"
+                        onClick={() => toggleReviewed(calc.employeeId)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md cursor-pointer transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90 hover:bg-muted/60"
+                        title={reviewedIds.has(calc.employeeId) ? 'Revisado: clic para desmarcar' : 'Marcar como revisado'}
+                        aria-label={`${reviewedIds.has(calc.employeeId) ? 'Desmarcar' : 'Marcar'} a ${calc.fullName} como revisado`}
+                        aria-pressed={reviewedIds.has(calc.employeeId)}
+                      >
+                        {reviewedIds.has(calc.employeeId) ? (
+                          <CheckCircle2 className="h-4.5 w-4.5 text-emerald-600 dark:text-emerald-400" />
+                        ) : (
+                          <Circle className="h-4.5 w-4.5 text-muted-foreground/40 hover:text-muted-foreground" />
+                        )}
+                      </button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -237,6 +312,7 @@ export function PayrollTableView({
                     >
                       <Eye className="h-3.5 w-3.5" />
                     </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               )

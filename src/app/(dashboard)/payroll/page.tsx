@@ -1,3 +1,4 @@
+import { fetchCutDeductions } from '@/lib/payroll/cut-deductions'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -111,14 +112,10 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
       // recurrentes "por días trabajados")
       empQuery,
 
-      // Descuentos dentro del rango de corte
-      supabase
-        .from('deductions')
-        .select('*')
-        .eq('organization_id', currentOrg.id)
-        .neq('status', 'anulado')
-        .gte('date', startDate)
-        .lte('date', endDate),
+      // Descuentos del corte: por fecha y por período de rol (ver fetchCutDeductions)
+      fetchCutDeductions(supabase, currentOrg.id, startDate, endDate, {
+        department: params.department,
+      }).then((data) => ({ data })),
 
       // Reglas de descuento RECURRENTE activas (alimentación/vivienda) — no
       // llevan un registro por mes, se aplican en cada corte mientras estén
