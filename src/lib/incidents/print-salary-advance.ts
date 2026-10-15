@@ -6,6 +6,7 @@ import { INCIDENT_TYPE_OPTIONS } from './constants'
 import { buildDocumentHeader, DOCUMENT_HEADER_STYLES } from '@/lib/print/document-header'
 import { buildDocumentSignatures, DOCUMENT_SIGNATURES_STYLES } from '@/lib/print/document-signatures'
 import { openPrintWindow, resolveApproverStatus, shiftAccentHex } from '@/lib/print/document-shell'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 export interface PrintSalaryAdvanceData {
   organization?: Partial<Organization> | null
@@ -64,7 +65,7 @@ export function printSalaryAdvanceDocument(data: PrintSalaryAdvanceData) {
   const approverStatus = resolveApproverStatus(data.status, data.resolvedAt)
   const requestDateFormatted = data.requestDate
     ? formatLongDate(data.requestDate)
-    : formatLongDate(new Date().toISOString().split('T')[0])
+    : formatLongDate(getEcuadorTodayIso())
 
   const count = data.installmentsCount || 1
   const schedule = data.schedule || []

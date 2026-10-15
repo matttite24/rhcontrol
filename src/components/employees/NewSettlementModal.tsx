@@ -28,6 +28,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface NewSettlementModalProps {
   organizationId: string
@@ -53,7 +54,7 @@ export function NewSettlementModal({
   onOpenChange,
 }: NewSettlementModalProps) {
   const [selectedEmpId, setSelectedEmpId] = useState<string>('')
-  const [terminationDate, setTerminationDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [terminationDate, setTerminationDate] = useState<string>(getEcuadorTodayIso())
   const [reason, setReason] = useState<TerminationReason>('renuncia_voluntaria')
   const [loading, setLoading] = useState(false)
   const router = useRouter()

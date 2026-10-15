@@ -1,5 +1,6 @@
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
+import { StatusTabsSkeleton } from '@/components/ui/status-tabs'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 import { buttonVariants } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
@@ -27,7 +28,6 @@ export default function EmployeesLoading() {
       <PageHeader
         title="Directorio de Empleados"
         description="Perfil, cargo y estado laboral de cada empleado"
-        showExport
         action={
           <button type="button" disabled className={cn(buttonVariants({ size: 'sm' }), 'gap-2 font-medium opacity-70')}>
             <Plus className="h-4 w-4" />
@@ -39,20 +39,10 @@ export default function EmployeesLoading() {
       <SubHeader
         search={{
           name: 'q',
-          placeholder: 'Buscar por empleado o motivo...',
+          placeholder: 'Nombre o cédula…',
         }}
-        selects={[
-          {
-            name: 'status',
-            placeholder: 'Todos los estados',
-            options: [
-              { value: 'activo', label: 'Activo' },
-              { value: 'inactivo', label: 'Inactivo' },
-              { value: 'prueba', label: 'En prueba' },
-            ],
-          },
-        ]}
-        counter="Cargando..."
+        className="bg-muted"
+        trailing={<StatusTabsSkeleton labels={['Todos', 'Activos', 'En prueba', 'Inactivos']} />}
       >
         {/* Departamento y Cargo dependen de la BD: skeleton mientras cargan */}
         <div className="h-9 w-40 rounded-lg bg-muted animate-pulse" />

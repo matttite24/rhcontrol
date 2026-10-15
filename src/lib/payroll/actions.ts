@@ -152,6 +152,7 @@ export async function generatePayrollReportAction(
       .from('employees')
       .select(`*, salaries:employee_salaries (*), schedules:employee_schedules (*)`)
       .eq('organization_id', organizationId)
+      .neq('status', 'inactivo')
       .order('full_name')
     if (department) empQuery = empQuery.eq('department', department)
 

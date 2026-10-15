@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
 import { Input } from '@/components/ui/input'
 import { Button, buttonVariants } from '@/components/ui/button'
+import { PayrollMonthPicker } from '@/components/payroll/PayrollMonthPicker'
 import { PayrollWorkspaceProvider, PayrollSaveButtonSlot, PayrollTableSlot, PayrollKpiSlot, PayrollPayoutButtonsSlot } from '@/components/payroll/PayrollWorkspace'
 import { calculatePayroll } from '@/lib/payroll/calculate'
 import { Employee, EmployeeSalary, Deduction, ShiftRequest, Incident, EmployeeSchedule, QuincenaPayment } from '@/types/employee'
@@ -86,6 +87,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
         schedules:employee_schedules (*)
       `)
       .eq('organization_id', currentOrg.id)
+    .neq('status', 'inactivo')
       .order('full_name')
 
     if (params.department) {
@@ -212,6 +214,11 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
         description="Cálculo y consolidación general de haberes, horas extras y deducciones"
         action={
           <div className="flex items-center gap-2">
+            <PayrollMonthPicker
+              startDate={startDate}
+              endDate={endDate}
+              minMonth={currentOrg.payroll_start_month}
+            />
             {hasDateRange && (
               <PayrollPayoutButtonsSlot
                 calculations={filteredCalculations}
@@ -230,7 +237,7 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
         }
       />
 
-      {/* Subbarra de Filtros con Rango de Fechas (Corte Inicial y Final) */}
+      {/* Subbarra de filtros (el mes del rol se elige en el encabezado) */}
       <SubHeader
         search={{
           name: 'q',
@@ -245,17 +252,9 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
             options: departments.map((d) => ({ value: d, label: d })),
           },
         ]}
-        dateRange={{
-          fromName: 'start_date',
-          toName: 'end_date',
-          defaultFrom: startDate,
-          defaultTo: endDate,
-          placeholder: 'Rango del período de corte',
-        }}
         hasFilters={hasFilters}
         clearHref="/payroll"
-        submitLabel={hasDateRange ? 'Actualizar' : 'Cargar'}
-        counter={hasDateRange ? `${filteredCalculations.length} ${filteredCalculations.length === 1 ? 'empleado' : 'empleados'}` : 'Sin cargar'}
+                counter={hasDateRange ? `${filteredCalculations.length} ${filteredCalculations.length === 1 ? 'empleado' : 'empleados'}` : 'Sin cargar'}
       />
 
       {overlappingReport && (
@@ -279,9 +278,9 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
             <div className="h-12 w-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4">
               <Calendar className="h-6 w-6" />
             </div>
-            <h3 className="font-bold text-base text-foreground">Selecciona el período de corte</h3>
+            <h3 className="font-bold text-base text-foreground">Selecciona el mes del rol</h3>
             <p className="text-xs text-muted-foreground mt-1.5 max-w-xs mx-auto">
-              Elige el rango de fechas del rol a liquidar y pulsa <strong>"Cargar"</strong> para calcular haberes, horas extras y deducciones de ese período.
+              Elige el mes a liquidar con el selector de arriba. El rol cubre el mes completo y calcula haberes, horas extras y deducciones de ese mes.
             </p>
           </div>
         </div>

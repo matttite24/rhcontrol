@@ -3,6 +3,7 @@ import { getCurrentOrganization } from '@/lib/org/server'
 import { buttonVariants } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
+import { StatusTabs, type StatusTab } from '@/components/ui/status-tabs'
 import { PaginationBar } from '@/components/ui/pagination-bar'
 import { NewEmployeeButton } from '@/components/employees/NewEmployeeButton'
 import { EmployeesTableClient } from '@/components/employees/EmployeesTableClient'
@@ -56,21 +57,47 @@ export default async function EmployeesPage({
     .order('full_name', { ascending: true })
     .range(rangeStart, rangeEnd)
 
-  if (params.q) {
-    query = query.or(`full_name.ilike.%${params.q}%,national_id.ilike.%${params.q}%,email.ilike.%${params.q}%`)
+  // Filtros comunes (todo menos el estado): se reutilizan para la lista y para
+  // los contadores de las pestañas, así los números coinciden con cada vista.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyBaseFilters<Q extends { eq: any; or: any }>(q: Q): Q {
+    let filtered = q
+    if (params.q) {
+      filtered = filtered.or(`full_name.ilike.%${params.q}%,national_id.ilike.%${params.q}%,email.ilike.%${params.q}%`)
+    }
+    if (params.department) filtered = filtered.eq('department', params.department)
+    if (params.position) filtered = filtered.eq('position', params.position)
+    return filtered
   }
-  if (params.department) {
-    query = query.eq('department', params.department)
+
+  // "Todos" no filtra por estado (incluye inactivos); el resto filtra por su estado.
+  const statusFilter = params.status ?? 'todos'
+  query = applyBaseFilters(query)
+  if (statusFilter !== 'todos') {
+    query = query.eq('status', statusFilter)
   }
-  if (params.position) {
-    query = query.eq('position', params.position)
-  }
-  if (params.status) {
-    query = query.eq('status', params.status)
+
+  const countFor = (status?: string) => {
+    let q = applyBaseFilters(
+      supabase
+        .from('employees')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', currentOrg.id)
+    )
+    if (status) q = q.eq('status', status)
+    return q
   }
 
   // Cargar datos de empleados, departamentos y cargos de la empresa activa
-  const [{ data: employeesData, error, count }, { data: deptList }, { data: posList }] = await Promise.all([
+  const [
+    { data: employeesData, error, count },
+    { data: deptList },
+    { data: posList },
+    { count: allCount },
+    { count: activeCount },
+    { count: probationCount },
+    { count: inactiveCount },
+  ] = await Promise.all([
     query,
     supabase
       .from('departments')
@@ -82,6 +109,10 @@ export default async function EmployeesPage({
       .select('name')
       .eq('organization_id', currentOrg.id)
       .order('name', { ascending: true }),
+    countFor(),
+    countFor('activo'),
+    countFor('prueba'),
+    countFor('inactivo'),
   ])
 
   const employees = (employeesData ?? []) as (Employee & {
@@ -91,9 +122,27 @@ export default async function EmployeesPage({
   })[]
   const departments = (deptList ?? []).map((d) => d.name)
   const positions = (posList ?? []).map((p) => p.name)
-  const hasFilters = Boolean(params.q || params.department || params.position || params.status)
+  const hasFilters = Boolean(params.q || params.department || params.position)
   const totalCount = count ?? 0
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+
+  const statusTabs: StatusTab[] = [
+    { value: 'todos', label: 'Todos', count: allCount ?? 0, tone: 'neutral', alwaysShow: true },
+    { value: 'activo', label: 'Activos', count: activeCount ?? 0, tone: 'success' },
+    { value: 'prueba', label: 'En prueba', count: probationCount ?? 0, tone: 'warning' },
+    { value: 'inactivo', label: 'Inactivos', count: inactiveCount ?? 0, tone: 'neutral' },
+  ]
+
+  function buildStatusHref(status: string) {
+    const sp = new URLSearchParams()
+    if (params.q) sp.set('q', params.q)
+    if (params.department) sp.set('department', params.department)
+    if (params.position) sp.set('position', params.position)
+    // "Todos" es la vista por defecto: no necesita parámetro.
+    if (status !== 'todos') sp.set('status', status)
+    const qs = sp.toString()
+    return qs ? `/employees?${qs}` : '/employees'
+  }
 
   function buildPageHref(page: number) {
     const sp = new URLSearchParams()
@@ -112,7 +161,6 @@ export default async function EmployeesPage({
       <PageHeader
         title="Directorio de Empleados"
         description="Perfil, cargo y estado laboral de cada empleado"
-        showExport
         action={<NewEmployeeButton />}
       />
 
@@ -121,7 +169,7 @@ export default async function EmployeesPage({
         search={{
           name: 'q',
           defaultValue: params.q,
-          placeholder: 'Buscar por empleado o motivo...',
+          placeholder: 'Nombre o cédula…',
         }}
         selects={[
           {
@@ -136,20 +184,18 @@ export default async function EmployeesPage({
             placeholder: 'Todos los cargos',
             options: positions.map((p) => ({ value: p, label: p })),
           },
-          {
-            name: 'status',
-            defaultValue: params.status ?? '',
-            placeholder: 'Todos los estados',
-            options: [
-              { value: 'activo', label: 'Activo' },
-              { value: 'inactivo', label: 'Inactivo' },
-              { value: 'prueba', label: 'En prueba' },
-            ],
-          },
         ]}
         hasFilters={hasFilters}
         clearHref="/employees"
-        counter={`${totalCount} ${totalCount === 1 ? 'empleado' : 'empleados'}`}
+        className="bg-muted"
+        trailing={
+          <StatusTabs
+            ariaLabel="Estado laboral de los empleados"
+            tabs={statusTabs}
+            activeValue={statusFilter}
+            buildHref={buildStatusHref}
+          />
+        }
       />
 
       {/* Tabla a Ancho Completo */}

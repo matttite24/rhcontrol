@@ -5,6 +5,7 @@ import { INCIDENT_TYPE_OPTIONS } from './constants'
 import { buildDocumentHeader, DOCUMENT_HEADER_STYLES } from '@/lib/print/document-header'
 import { buildDocumentSignatures, DOCUMENT_SIGNATURES_STYLES } from '@/lib/print/document-signatures'
 import { openPrintWindow, resolveApproverStatus, shiftAccentHex } from '@/lib/print/document-shell'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 export interface PrintNonCompliantData {
   organization?: Partial<Organization> | null
@@ -56,7 +57,7 @@ export function printNonCompliantDocument(data: PrintNonCompliantData) {
     approved: 'Registrado',
     rejected: 'Anulado',
   })
-  const issueDateFormatted = data.issueDate ? formatLongDate(data.issueDate) : formatLongDate(new Date().toISOString().split('T')[0])
+  const issueDateFormatted = data.issueDate ? formatLongDate(data.issueDate) : formatLongDate(getEcuadorTodayIso())
   const incidentDateFormatted = formatLongDate(data.incidentDate)
   const count = data.consecutiveCount || 1
 

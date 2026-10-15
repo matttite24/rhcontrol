@@ -48,6 +48,8 @@ import { getInitials, formatLongDate } from '@/lib/shifts/format'
 import { EmployeePickerStep } from '@/components/shared/EmployeePickerStep'
 import { pushRecentEmployeeId } from '@/lib/shifts/recent-employees'
 import { cn } from '@/lib/utils'
+import { formatTimeHHmm } from '@/lib/shifts/time'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface EmployeeWithSchedule extends Employee {
   schedules?: EmployeeSchedule[]
@@ -196,20 +198,20 @@ export function ScheduleChangeWizardModal({
 
     if (sch.has_split_shift) {
       return {
-        summary: `${dayName}: ${sch.start_time_1}-${sch.end_time_1} / ${sch.start_time_2}-${sch.end_time_2}`,
+        summary: `${dayName}: ${formatTimeHHmm(sch.start_time_1)}-${formatTimeHHmm(sch.end_time_1)} / ${formatTimeHHmm(sch.start_time_2)}-${formatTimeHHmm(sch.end_time_2)}`,
         schedule: sch,
       }
     }
 
     return {
-      summary: `${dayName}: ${sch.start_time_1 || '08:00'} a ${sch.end_time_1 || '17:00'}`,
+      summary: `${dayName}: ${formatTimeHHmm(sch.start_time_1) || '08:00'} a ${formatTimeHHmm(sch.end_time_1) || '17:00'}`,
       schedule: sch,
     }
   }
 
   // Agregar un nuevo día de cambio
   function handleAddDay() {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getEcuadorTodayIso()
     const orig = getOriginalScheduleForDate(today)
 
     const newDay: ScheduleDayChange = {
@@ -244,9 +246,9 @@ export function ScheduleChangeWizardModal({
       if (!current.is_workday) {
         current.new_summary = 'Descanso / Libre'
       } else if (current.has_split_shift) {
-        current.new_summary = `${current.start_time_1}-${current.end_time_1} / ${current.start_time_2}-${current.end_time_2}`
+        current.new_summary = `${formatTimeHHmm(current.start_time_1)}-${formatTimeHHmm(current.end_time_1)} / ${formatTimeHHmm(current.start_time_2)}-${formatTimeHHmm(current.end_time_2)}`
       } else {
-        current.new_summary = `${current.start_time_1} a ${current.end_time_1}`
+        current.new_summary = `${formatTimeHHmm(current.start_time_1)} a ${formatTimeHHmm(current.end_time_1)}`
       }
 
       updated[index] = current
@@ -340,7 +342,7 @@ export function ScheduleChangeWizardModal({
       nationalId: selectedEmp.national_id || '',
       department: selectedEmp.department || '',
       position: selectedEmp.position || '',
-      date: dayChanges[0]?.date || new Date().toISOString().split('T')[0],
+      date: dayChanges[0]?.date || getEcuadorTodayIso(),
       reason: reason.trim() || 'Cambio temporal de jornada laboral acordado.',
       dayChanges,
       status: createdRequest?.status || 'pendiente',
@@ -434,18 +436,18 @@ export function ScheduleChangeWizardModal({
                   <div className="flex items-center gap-2.5 min-w-0">
                     <Avatar className="h-8 w-8 ring-1 ring-border shrink-0">
                       <AvatarImage src={selectedEmp.avatar_url ?? undefined} alt={selectedEmp.full_name} />
-                      <AvatarFallback className="text-[10px] font-bold">
+                      <AvatarFallback className="text-xs font-bold">
                         {getInitials(selectedEmp.full_name)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-foreground truncate">{selectedEmp.full_name}</p>
-                      <p className="text-[10px] text-muted-foreground truncate">
+                      <p className="text-xs text-muted-foreground truncate">
                         CI: {selectedEmp.national_id || '—'} • {selectedEmp.position || 'Empleado'}
                       </p>
                     </div>
                   </div>
-                  <Badge variant="outline" className="text-[10px] font-mono shrink-0">
+                  <Badge variant="outline" className="text-xs font-mono shrink-0">
                     Cambio Temporal
                   </Badge>
                 </div>
@@ -457,7 +459,7 @@ export function ScheduleChangeWizardModal({
                       <Label className="text-xs font-semibold text-foreground">
                         Días que cambiarán de horario
                       </Label>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Solo afectarán las fechas específicas seleccionadas.
                       </p>
                     </div>
@@ -499,7 +501,7 @@ export function ScheduleChangeWizardModal({
                         >
                           <div className="flex items-center justify-between gap-2 border-b pb-2">
                             <div className="flex items-center gap-2">
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
+                              <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
                                 Día #{idx + 1}
                               </span>
                               <span className="text-xs font-medium text-foreground">
@@ -523,7 +525,7 @@ export function ScheduleChangeWizardModal({
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                             {/* Fecha */}
                             <div className="space-y-1">
-                              <Label className="text-[11px] text-muted-foreground">Fecha a modificar</Label>
+                              <Label className="text-xs text-muted-foreground">Fecha a modificar</Label>
                               <DatePicker
                                 name={`date_change_${idx}`}
                                 value={dc.date}
@@ -534,8 +536,8 @@ export function ScheduleChangeWizardModal({
 
                             {/* Horario Habitual (Referencia) */}
                             <div className="space-y-1">
-                              <Label className="text-[11px] text-muted-foreground">Horario Habitual Registrado</Label>
-                              <div className="h-8 px-2.5 rounded-md border bg-muted/40 flex items-center text-[11px] text-muted-foreground truncate">
+                              <Label className="text-xs text-muted-foreground">Horario Habitual Registrado</Label>
+                              <div className="h-8 px-2.5 rounded-md border bg-muted/40 flex items-center text-xs text-muted-foreground truncate">
                                 {dc.original_summary || 'Horario Regular'}
                               </div>
                             </div>
@@ -567,7 +569,7 @@ export function ScheduleChangeWizardModal({
                                   }
                                   className="h-4 w-4 rounded border-border text-blue-600 focus:ring-blue-500 cursor-pointer"
                                 />
-                                <span className="text-[11px] text-muted-foreground">
+                                <span className="text-xs text-muted-foreground">
                                   Jornada Dividida
                                 </span>
                               </label>
@@ -580,15 +582,17 @@ export function ScheduleChangeWizardModal({
                               {!dc.has_split_shift ? (
                                 <div className="grid grid-cols-2 gap-2">
                                   <div className="space-y-1">
-                                    <Label className="text-[10px] text-muted-foreground">Hora Entrada</Label>
+                                    <Label className="text-xs text-muted-foreground">Hora Entrada</Label>
                                     <TimePicker
+                                      ariaLabel="Hora de entrada"
                                       value={dc.start_time_1}
                                       onChange={(val) => handleUpdateDay(idx, { start_time_1: val })}
                                     />
                                   </div>
                                   <div className="space-y-1">
-                                    <Label className="text-[10px] text-muted-foreground">Hora Salida</Label>
+                                    <Label className="text-xs text-muted-foreground">Hora Salida</Label>
                                     <TimePicker
+                                      ariaLabel="Hora de salida"
                                       value={dc.end_time_1}
                                       onChange={(val) => handleUpdateDay(idx, { end_time_1: val })}
                                     />
@@ -597,29 +601,33 @@ export function ScheduleChangeWizardModal({
                               ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                   <div className="space-y-1">
-                                    <Label className="text-[10px] text-muted-foreground">1ª Entrada</Label>
+                                    <Label className="text-xs text-muted-foreground">1ª Entrada</Label>
                                     <TimePicker
+                                      ariaLabel="Primera entrada"
                                       value={dc.start_time_1}
                                       onChange={(val) => handleUpdateDay(idx, { start_time_1: val })}
                                     />
                                   </div>
                                   <div className="space-y-1">
-                                    <Label className="text-[10px] text-muted-foreground">1ª Salida</Label>
+                                    <Label className="text-xs text-muted-foreground">1ª Salida</Label>
                                     <TimePicker
+                                      ariaLabel="Primera salida"
                                       value={dc.end_time_1}
                                       onChange={(val) => handleUpdateDay(idx, { end_time_1: val })}
                                     />
                                   </div>
                                   <div className="space-y-1">
-                                    <Label className="text-[10px] text-muted-foreground">2ª Entrada</Label>
+                                    <Label className="text-xs text-muted-foreground">2ª Entrada</Label>
                                     <TimePicker
+                                      ariaLabel="Segunda entrada"
                                       value={dc.start_time_2 || '14:00'}
                                       onChange={(val) => handleUpdateDay(idx, { start_time_2: val })}
                                     />
                                   </div>
                                   <div className="space-y-1">
-                                    <Label className="text-[10px] text-muted-foreground">2ª Salida</Label>
+                                    <Label className="text-xs text-muted-foreground">2ª Salida</Label>
                                     <TimePicker
+                                      ariaLabel="Segunda salida"
                                       value={dc.end_time_2 || '18:00'}
                                       onChange={(val) => handleUpdateDay(idx, { end_time_2: val })}
                                     />
@@ -633,7 +641,7 @@ export function ScheduleChangeWizardModal({
                                 return (
                                   <div
                                     className={cn(
-                                      'flex items-center gap-1.5 text-[11px] pt-0.5',
+                                      'flex items-center gap-1.5 text-xs pt-0.5',
                                       over
                                         ? 'text-destructive font-medium'
                                         : 'text-muted-foreground'
@@ -708,7 +716,7 @@ export function ScheduleChangeWizardModal({
                   </div>
                   <div className="flex items-center justify-between border-b pb-2">
                     <span className="text-muted-foreground font-medium">Estado:</span>
-                    <Badge variant="outline" className="text-[10px] font-mono">
+                    <Badge variant="outline" className="text-xs font-mono">
                       Pendiente
                     </Badge>
                   </div>

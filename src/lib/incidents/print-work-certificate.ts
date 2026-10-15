@@ -4,6 +4,7 @@ import { Organization } from '@/types/employee'
 import { INCIDENT_TYPE_OPTIONS } from './constants'
 import { buildDocumentHeader, resolveOrgHeaderFields } from '@/lib/print/document-header'
 import { DOCUMENT_SHELL_STYLES, shiftAccentHex } from '@/lib/print/document-shell'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 export interface PrintWorkCertificateData {
   organization?: Partial<Organization> | null
@@ -49,7 +50,7 @@ export function printWorkCertificateDocument(data: PrintWorkCertificateData): bo
   }
 
   const { orgName } = resolveOrgHeaderFields(data.organization, data.organizationName)
-  const issueDateFormatted = formatLongDate(new Date().toISOString().split('T')[0])
+  const issueDateFormatted = formatLongDate(getEcuadorTodayIso())
   const accentHex =
     data.accentHex || shiftAccentHex(INCIDENT_TYPE_OPTIONS, 'certificado_trabajo', '#0891b2')
 

@@ -494,7 +494,7 @@ export function CashShortageWizardModal({
                 <div className="p-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2">
                   <Info className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
                   <div>
-                    Este descuento no requiere aprobación: quedará registrado como <strong>Aplicado en Rol</strong> de inmediato, en el rol de <strong>{MONTH_NAMES[effectiveMonth]} {effectiveYear}</strong>. Podrá anularse después en caso de corrección.
+                    Este descuento no requiere aprobación: quedará registrado como <strong>Vigente</strong> de inmediato, en el rol de <strong>{MONTH_NAMES[effectiveMonth]} {effectiveYear}</strong>. Podrá anularse después en caso de corrección.
                   </div>
                 </div>
               </div>
@@ -511,7 +511,7 @@ export function CashShortageWizardModal({
                     Descuento Registrado con Éxito
                   </h3>
                   <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                    El descuento quedó registrado con estado <strong>Aplicado en Rol</strong>. Puedes anularlo posteriormente desde el detalle si fuese necesario.
+                    El descuento quedó registrado con estado <strong>Vigente</strong>. Puedes anularlo posteriormente desde el detalle si fuese necesario.
                   </p>
                 </div>
 

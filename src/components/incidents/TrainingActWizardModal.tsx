@@ -34,6 +34,7 @@ import { createTrainingActAction } from '@/lib/incidents/actions'
 import { TRAINING_TOPIC_CATEGORIES } from '@/lib/incidents/constants'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface TrainingActWizardModalProps {
   organizationId: string
@@ -86,7 +87,7 @@ export function TrainingActWizardModal({
   const [searchEmp, setSearchEmp] = useState('')
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null)
 
-  const [trainingDate, setTrainingDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [trainingDate, setTrainingDate] = useState<string>(getEcuadorTodayIso())
   const [trainerName, setTrainerName] = useState('')
   const [topicCategory, setTopicCategory] = useState<string>('')
   const [topicLabel, setTopicLabel] = useState('')
@@ -114,7 +115,7 @@ export function TrainingActWizardModal({
     setStep(1)
     setSelectedEmp(null)
     setSearchEmp('')
-    setTrainingDate(new Date().toISOString().split('T')[0])
+    setTrainingDate(getEcuadorTodayIso())
     setTrainerName('')
     setTopicCategory('')
     setTopicLabel('')

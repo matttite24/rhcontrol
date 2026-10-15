@@ -39,6 +39,8 @@ import { EmployeePickerStep } from '@/components/shared/EmployeePickerStep'
 import { pushRecentEmployeeId } from '@/lib/shifts/recent-employees'
 import { parseTimeToMinutes, intervalsOverlap } from '@/lib/shifts/time'
 import { cn } from '@/lib/utils'
+import { formatTimeHHmm } from '@/lib/shifts/time'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface EmployeeWithSchedule extends Employee {
   schedules?: EmployeeSchedule[]
@@ -135,9 +137,15 @@ export function OvertimeWizardModal({
   // Datos del Formulario — si viene editRequest, se precargan sus valores.
   const [selectedEmpId, setSelectedEmpId] = useState<string>(editRequest?.employee_id || '')
   const [searchQuery, setSearchQuery] = useState('')
-  const [date, setDate] = useState<string>(editRequest?.date || new Date().toISOString().split('T')[0])
-  const [startTime, setStartTime] = useState(editRequest?.start_time || '18:00')
-  const [endTime, setEndTime] = useState(editRequest?.end_time || '20:00')
+  const [date, setDate] = useState<string>(editRequest?.date || getEcuadorTodayIso())
+  const [startTime, setStartTime] = useState(formatTimeHHmm(editRequest?.start_time) || '18:00')
+  const [endTime, setEndTime] = useState(formatTimeHHmm(editRequest?.end_time) || '20:00')
+  // Segundo rango opcional (doble jornada de horas extras)
+  const [hasSecondRange, setHasSecondRange] = useState(Boolean(editRequest?.metadata?.start_time_2))
+  const [startTime2, setStartTime2] = useState<string>(formatTimeHHmm(editRequest?.metadata?.start_time_2) || '21:00')
+  const [endTime2, setEndTime2] = useState<string>(formatTimeHHmm(editRequest?.metadata?.end_time_2) || '22:00')
+  const extraStart2 = hasSecondRange ? startTime2 : null
+  const extraEnd2 = hasSecondRange ? endTime2 : null
   const [reason, setReason] = useState(editRequest?.reason || '')
   const [isHoliday, setIsHoliday] = useState(Boolean(editRequest?.metadata?.is_holiday))
   const [holidayTouched, setHolidayTouched] = useState(isEditMode)
@@ -246,49 +254,74 @@ export function OvertimeWizardModal({
 
   // Cálculo de horas trabajadas
   const calculatedHours = useMemo(() => {
-    if (!startTime || !endTime) return 0
-    const t1 = parseTimeToMinutes(startTime)
-    let t2 = parseTimeToMinutes(endTime)
-    if (t2 <= t1) {
-      t2 += 24 * 60 // Pasa de medianoche
+    const rangeHours = (from: string, to: string) => {
+      if (!from || !to) return 0
+      const t1 = parseTimeToMinutes(from)
+      let t2 = parseTimeToMinutes(to)
+      if (t2 <= t1) t2 += 24 * 60 // Pasa de medianoche
+      return (t2 - t1) / 60
     }
-    const diffHours = (t2 - t1) / 60
-    return Number(diffHours.toFixed(2))
-  }, [startTime, endTime])
+    const total = rangeHours(startTime, endTime) + (hasSecondRange ? rangeHours(startTime2, endTime2) : 0)
+    return Number(total.toFixed(2))
+  }, [startTime, endTime, hasSecondRange, startTime2, endTime2])
 
   // Detección de Conflicto / Solapamiento con jornada laboral regular
   const scheduleOverlapWarning = useMemo(() => {
-    if (!activeDaySchedule || !activeDaySchedule.is_workday || !startTime || !endTime) {
-      return null
+    if (!startTime || !endTime) return null
+
+    const toInterval = (from: string, to: string): [number, number] => {
+      const start = parseTimeToMinutes(from)
+      let end = parseTimeToMinutes(to)
+      if (end <= start) end += 24 * 60
+      return [start, end]
     }
 
-    const otStart = parseTimeToMinutes(startTime)
-    let otEnd = parseTimeToMinutes(endTime)
-    if (otEnd <= otStart) otEnd += 24 * 60
-
-    // Tramo 1 — normalizar también el cruce de medianoche del turno regular
-    // (ej. 22:00-06:00): sin esto, s1End (360) < s1Start (1320) forma un
-    // intervalo mal formado y intervalsOverlap falla silenciosamente,
-    // dejando pasar horas extra que en realidad se solapan con la jornada.
-    const s1Start = parseTimeToMinutes(activeDaySchedule.start_time_1 || '08:00')
-    let s1End = parseTimeToMinutes(activeDaySchedule.end_time_1 || '13:00')
-    if (s1End <= s1Start) s1End += 24 * 60
-    if (intervalsOverlap(otStart, otEnd, s1Start, s1End)) {
-      return `La hora extra solicitada (${startTime} - ${endTime}) se solapa con su 1er turno regular (${activeDaySchedule.start_time_1} a ${activeDaySchedule.end_time_1}).`
+    const ranges: { label: string; from: string; to: string }[] = [
+      { label: 'La hora extra solicitada', from: startTime, to: endTime },
+    ]
+    if (hasSecondRange && startTime2 && endTime2) {
+      ranges.push({ label: 'El 2do rango de horas extras', from: startTime2, to: endTime2 })
+      // Los dos rangos entre sí tampoco pueden solaparse
+      const [aS, aE] = toInterval(startTime, endTime)
+      const [bS, bE] = toInterval(startTime2, endTime2)
+      if (intervalsOverlap(aS, aE, bS, bE)) {
+        return `Los dos rangos de horas extras (${startTime} - ${endTime} y ${startTime2} - ${endTime2}) se solapan entre sí.`
+      }
     }
 
-    // Tramo 2 (si tiene doble jornada)
+    // Un feriado es día libre para todos: no hay jornada regular con la que solapar.
+    if (isHoliday || !activeDaySchedule || !activeDaySchedule.is_workday) return null
+
+    // Se normaliza también el cruce de medianoche del turno regular
+    // (ej. 22:00-06:00): sin esto, el intervalo queda mal formado y
+    // intervalsOverlap falla silenciosamente.
+    const shifts: { name: string; from: string; to: string }[] = [
+      {
+        name: '1er turno regular',
+        from: activeDaySchedule.start_time_1 || '08:00',
+        to: activeDaySchedule.end_time_1 || '13:00',
+      },
+    ]
     if (activeDaySchedule.has_split_shift) {
-      const s2Start = parseTimeToMinutes(activeDaySchedule.start_time_2 || '14:00')
-      let s2End = parseTimeToMinutes(activeDaySchedule.end_time_2 || '18:00')
-      if (s2End <= s2Start) s2End += 24 * 60
-      if (intervalsOverlap(otStart, otEnd, s2Start, s2End)) {
-        return `La hora extra solicitada (${startTime} - ${endTime}) se solapa con su 2do turno regular (${activeDaySchedule.start_time_2} a ${activeDaySchedule.end_time_2}).`
+      shifts.push({
+        name: '2do turno regular',
+        from: activeDaySchedule.start_time_2 || '14:00',
+        to: activeDaySchedule.end_time_2 || '18:00',
+      })
+    }
+
+    for (const r of ranges) {
+      const [oS, oE] = toInterval(r.from, r.to)
+      for (const sh of shifts) {
+        const [sS, sE] = toInterval(sh.from, sh.to)
+        if (intervalsOverlap(oS, oE, sS, sE)) {
+          return `${r.label} (${r.from} - ${r.to}) se solapa con su ${sh.name} (${sh.from} a ${sh.to}).`
+        }
       }
     }
 
     return null
-  }, [activeDaySchedule, startTime, endTime])
+  }, [activeDaySchedule, startTime, endTime, hasSecondRange, startTime2, endTime2, isHoliday])
 
   // Detectar si la fecha seleccionada corresponde a un feriado registrado
   const matchedHoliday = useMemo(() => {
@@ -321,12 +354,13 @@ export function OvertimeWizardModal({
     setStep(1)
     setSelectedEmpId('')
     setSearchQuery('')
-    setDate(new Date().toISOString().split('T')[0])
+    setDate(getEcuadorTodayIso())
     setStartTime('18:00')
     setEndTime('20:00')
     setReason('')
     setIsHoliday(false)
     setHolidayTouched(false)
+    setHasSecondRange(false)
     setOvertimeType('suplementaria_50')
     setOvertimeTypeTouched(false)
     setCreatedRequest(null)
@@ -365,6 +399,11 @@ export function OvertimeWizardModal({
       return
     }
 
+    if (hasSecondRange && (!startTime2 || !endTime2)) {
+      toast.error('Completa el segundo rango de horas.')
+      return
+    }
+
     if (scheduleOverlapWarning) {
       toast.error('No puedes emitir una hora extra sobre el horario de trabajo habitual.')
       return
@@ -388,11 +427,13 @@ export function OvertimeWizardModal({
         date,
         startTime,
         endTime,
+        startTime2: extraStart2,
+        endTime2: extraEnd2,
         hours: calculatedHours,
         reason,
         overtimeType,
         isHoliday,
-        isWorkday: activeDaySchedule ? activeDaySchedule.is_workday : null,
+        isWorkday: isHoliday ? false : activeDaySchedule ? activeDaySchedule.is_workday : null,
       })
 
       if (!result.success || !result.data) {
@@ -423,11 +464,13 @@ export function OvertimeWizardModal({
         date,
         startTime,
         endTime,
+        startTime2: extraStart2,
+        endTime2: extraEnd2,
         hours: calculatedHours,
         reason,
         overtimeType,
         isHoliday,
-        isWorkday: activeDaySchedule ? activeDaySchedule.is_workday : null,
+        isWorkday: isHoliday ? false : activeDaySchedule ? activeDaySchedule.is_workday : null,
       })
 
       if (!result.success || !result.data) {
@@ -471,11 +514,13 @@ export function OvertimeWizardModal({
             date: batchDate,
             startTime,
             endTime,
+            startTime2: extraStart2,
+            endTime2: extraEnd2,
             hours: calculatedHours,
             reason,
             overtimeType,
             isHoliday,
-            isWorkday: activeDaySchedule ? activeDaySchedule.is_workday : null,
+            isWorkday: isHoliday ? false : activeDaySchedule ? activeDaySchedule.is_workday : null,
           }).then((r) => {
             setBatchProgress((p) => p + 1)
             return r
@@ -524,10 +569,38 @@ export function OvertimeWizardModal({
       date,
       startTime,
       endTime,
+      startTime2: extraStart2,
+      endTime2: extraEnd2,
       hours: calculatedHours,
       reason: reason.trim(),
     })
   }
+
+  const overtimeTypeField = (
+    <div className="space-y-1.5">
+      <Label htmlFor="overtime_type" className="text-xs font-medium">
+        Tipo de Recargo *
+      </Label>
+      <select
+        id="overtime_type"
+        value={overtimeType}
+        onChange={(e) => {
+          setOvertimeType(e.target.value as any)
+          setOvertimeTypeTouched(true)
+        }}
+        className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-xs text-foreground focus:ring-1 focus:ring-ring cursor-pointer"
+      >
+        <option value="suplementaria_50">Suplementaria (50% Recargo)</option>
+        <option value="extraordinaria_100">Extraordinaria (100% Feriados / Fines de Semana)</option>
+      </select>
+      {!overtimeTypeTouched && (
+        <p className="text-xs text-muted-foreground italic">
+          Sugerido automáticamente según el horario habitual{isHoliday ? ' y el feriado marcado' : ''}.
+          {isBatchMode && ' Se aplica igual a todas las fechas del lote.'}
+        </p>
+      )}
+    </div>
+  )
 
   return (
     <>
@@ -620,13 +693,13 @@ export function OvertimeWizardModal({
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8 ring-1 ring-border shrink-0">
                         <AvatarImage src={selectedEmp.avatar_url ?? undefined} alt={selectedEmp.full_name} />
-                        <AvatarFallback className="text-[10px] font-semibold">
+                        <AvatarFallback className="text-xs font-semibold">
                           {getInitials(selectedEmp.full_name)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex flex-col min-w-0 flex-1">
                         <span className="text-xs font-semibold text-foreground">{selectedEmp.full_name}</span>
-                        <span className="text-[11px] text-muted-foreground truncate">{selectedEmp.position || selectedEmp.department || 'Empleado'}</span>
+                        <span className="text-xs text-muted-foreground truncate">{selectedEmp.position || selectedEmp.department || 'Empleado'}</span>
                       </div>
                     </div>
 
@@ -639,17 +712,17 @@ export function OvertimeWizardModal({
                       <div>
                         {activeDaySchedule ? (
                           activeDaySchedule.is_workday ? (
-                            <span className="font-mono font-semibold text-foreground bg-muted px-2 py-0.5 rounded text-[11px]">
-                              {activeDaySchedule.start_time_1} - {activeDaySchedule.end_time_1}
-                              {activeDaySchedule.has_split_shift && ` | ${activeDaySchedule.start_time_2} - ${activeDaySchedule.end_time_2}`}
+                            <span className="font-mono font-semibold text-foreground bg-muted px-2 py-0.5 rounded text-xs">
+                              {formatTimeHHmm(activeDaySchedule.start_time_1)} - {formatTimeHHmm(activeDaySchedule.end_time_1)}
+                              {activeDaySchedule.has_split_shift && ` | ${formatTimeHHmm(activeDaySchedule.start_time_2)} - ${formatTimeHHmm(activeDaySchedule.end_time_2)}`}
                             </span>
                           ) : (
-                            <Badge variant="outline" className="text-[10px] bg-muted/50 text-muted-foreground font-mono">
+                            <Badge variant="outline" className="text-xs bg-muted/50 text-muted-foreground font-mono">
                               Día Libre / Descanso
                             </Badge>
                           )
                         ) : (
-                          <span className="text-muted-foreground text-[11px] italic">Sin horario asignado</span>
+                          <span className="text-muted-foreground text-xs italic">Sin horario asignado</span>
                         )}
                       </div>
                     </div>
@@ -675,7 +748,7 @@ export function OvertimeWizardModal({
                     />
                     <div className="text-xs">
                       <span className="font-medium text-foreground">Repetir en varias fechas</span>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Genera una solicitud independiente por cada semana, para el mismo día y horario.
                       </p>
                     </div>
@@ -727,7 +800,7 @@ export function OvertimeWizardModal({
                       {batchDates.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {batchDates.map((d) => (
-                            <Badge key={d} variant="outline" className="text-[10px] font-mono bg-primary/5 border-primary/20 text-primary">
+                            <Badge key={d} variant="outline" className="text-xs font-mono bg-primary/5 border-primary/20 text-primary">
                               {formatLongDate(d)}
                             </Badge>
                           ))}
@@ -736,43 +809,24 @@ export function OvertimeWizardModal({
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="date" className="text-xs font-medium">
-                      Fecha Autorizada *
-                    </Label>
-                    <DatePicker
-                      id="date"
-                      name="date"
-                      value={date}
-                      onChange={(val) => setDate(val)}
-                      placeholder="Seleccionar fecha"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="date" className="text-xs font-medium">
+                        Fecha Autorizada *
+                      </Label>
+                      <DatePicker
+                        id="date"
+                        name="date"
+                        value={date}
+                        onChange={(val) => setDate(val)}
+                        placeholder="Seleccionar fecha"
+                      />
+                    </div>
+                    {overtimeTypeField}
                   </div>
                 )}
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="overtime_type" className="text-xs font-medium">
-                    Tipo de Recargo *
-                  </Label>
-                  <select
-                    id="overtime_type"
-                    value={overtimeType}
-                    onChange={(e) => {
-                      setOvertimeType(e.target.value as any)
-                      setOvertimeTypeTouched(true)
-                    }}
-                    className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-xs text-foreground focus:ring-1 focus:ring-ring cursor-pointer"
-                  >
-                    <option value="suplementaria_50">Suplementaria (50% Recargo)</option>
-                    <option value="extraordinaria_100">Extraordinaria (100% Feriados / Fines de Semana)</option>
-                  </select>
-                  {!overtimeTypeTouched && (
-                    <p className="text-[10px] text-muted-foreground italic">
-                      Sugerido automáticamente según el horario habitual{isHoliday ? ' y el feriado marcado' : ''}.
-                      {isBatchMode && ' Se aplica igual a todas las fechas del lote.'}
-                    </p>
-                  )}
-                </div>
+                {isBatchMode && overtimeTypeField}
 
                 {/* Checkbox: Marcar la fecha como feriado (no existe calendario de feriados en el sistema) */}
                 <label
@@ -791,7 +845,7 @@ export function OvertimeWizardModal({
                   />
                   <div className="text-xs">
                     <span className="font-medium text-foreground">Es día feriado</span>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {matchedHoliday
                         ? `Detectado automáticamente: ${matchedHoliday.name}.`
                         : 'Marca esta opción si la fecha autorizada corresponde a un feriado nacional o local.'}
@@ -807,6 +861,7 @@ export function OvertimeWizardModal({
                       Hora Desde (Inicio) *
                     </Label>
                     <TimePicker
+                      ariaLabel="Hora desde (inicio)"
                       value={startTime}
                       onChange={(t) => setStartTime(t)}
                       className="w-full h-9 text-xs justify-start"
@@ -818,12 +873,57 @@ export function OvertimeWizardModal({
                       Hora Hasta (Fin) *
                     </Label>
                     <TimePicker
+                      ariaLabel="Hora hasta (fin)"
                       value={endTime}
                       onChange={(t) => setEndTime(t)}
                       className="w-full h-9 text-xs justify-start"
                     />
                   </div>
                 </div>
+
+                {/* Segundo rango horario opcional (doble jornada) */}
+                {hasSecondRange ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">Segundo rango</span>
+                      <button
+                        type="button"
+                        onClick={() => setHasSecondRange(false)}
+                        className="text-xs text-destructive hover:underline cursor-pointer"
+                      >
+                        Quitar segundo rango
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Hora Desde (Inicio) *</Label>
+                        <TimePicker
+                          ariaLabel="Segundo rango: hora desde"
+                          value={startTime2}
+                          onChange={(t) => setStartTime2(t)}
+                          className="w-full h-9 text-xs justify-start"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Hora Hasta (Fin) *</Label>
+                        <TimePicker
+                          ariaLabel="Segundo rango: hora hasta"
+                          value={endTime2}
+                          onChange={(t) => setEndTime2(t)}
+                          className="w-full h-9 text-xs justify-start"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setHasSecondRange(true)}
+                    className="text-xs font-medium text-primary hover:underline cursor-pointer"
+                  >
+                    + Agregar segundo rango de horas
+                  </button>
+                )}
 
                 {/* Alerta si hay Solapamiento con la Jornada Regular */}
                 {scheduleOverlapWarning ? (
@@ -886,7 +986,7 @@ export function OvertimeWizardModal({
                     {!isBatchMode && (
                       <div>Fecha Autorizada: <span className="font-medium text-foreground">{formatLongDate(date)}</span></div>
                     )}
-                    <div>Jornada Extra: <span className="font-medium font-mono text-foreground">{startTime} a {endTime}</span></div>
+                    <div>Jornada Extra: <span className="font-medium font-mono text-foreground">{startTime} a {endTime}{hasSecondRange ? ` y ${startTime2} a ${endTime2}` : ''}</span></div>
                     <div>Duración por fecha: <span className="font-medium font-mono text-primary">{calculatedHours} horas</span></div>
                     <div className="col-span-2">Recargo: <span className="font-medium text-foreground">{overtimeType === 'suplementaria_50' ? '50% (Suplementaria)' : '100% (Extraordinaria)'}</span></div>
                     {isBatchMode && (
@@ -894,7 +994,7 @@ export function OvertimeWizardModal({
                         <span>Fechas:</span>
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           {batchDates.map((d) => (
-                            <Badge key={d} variant="outline" className="text-[10px] font-mono bg-primary/5 border-primary/20 text-primary">
+                            <Badge key={d} variant="outline" className="text-xs font-mono bg-primary/5 border-primary/20 text-primary">
                               {formatLongDate(d)}
                             </Badge>
                           ))}
@@ -952,7 +1052,7 @@ export function OvertimeWizardModal({
                         <span className="font-medium text-foreground">{formatLongDate(entry.date)}</span>
                       </div>
                       {!entry.success && (
-                        <span className="text-destructive text-[11px]">{entry.error}</span>
+                        <span className="text-destructive text-xs">{entry.error}</span>
                       )}
                     </div>
                   ))}
@@ -960,7 +1060,7 @@ export function OvertimeWizardModal({
 
                 <div className="rounded-xl border bg-muted/20 p-3 text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">Empleado:</span> {selectedEmp?.full_name} ·{' '}
-                  <span className="font-medium text-foreground">Horario:</span> {startTime} a {endTime} ({calculatedHours} horas c/u)
+                  <span className="font-medium text-foreground">Horario:</span> {startTime} a {endTime}{hasSecondRange ? ` y ${startTime2} a ${endTime2}` : ''} ({calculatedHours} horas c/u)
                 </div>
               </div>
             )}
@@ -985,42 +1085,42 @@ export function OvertimeWizardModal({
                       <h3 className="font-bold text-sm text-foreground uppercase tracking-wide">
                         {organizationName}
                       </h3>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Autorización de Horas Extras
                       </p>
                     </div>
-                    <div className="text-right text-[11px] font-mono text-muted-foreground">
+                    <div className="text-right text-xs font-mono text-muted-foreground">
                       Emisión: {new Date().toLocaleDateString('es-EC')}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <span className="text-muted-foreground text-[11px] block">Empleado:</span>
+                      <span className="text-muted-foreground text-xs block">Empleado:</span>
                       <span className="font-semibold text-foreground">{selectedEmp?.full_name}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground text-[11px] block">Cédula:</span>
+                      <span className="text-muted-foreground text-xs block">Cédula:</span>
                       <span className="font-mono text-foreground">{selectedEmp?.national_id || '—'}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground text-[11px] block">Cargo / Depto:</span>
+                      <span className="text-muted-foreground text-xs block">Cargo / Depto:</span>
                       <span className="text-foreground">{selectedEmp?.position || selectedEmp?.department || '—'}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground text-[11px] block">Fecha Autorizada:</span>
+                      <span className="text-muted-foreground text-xs block">Fecha Autorizada:</span>
                       <span className="font-medium text-foreground">{formatLongDate(date)}</span>
                     </div>
                     <div className="col-span-2">
-                      <span className="text-muted-foreground text-[11px] block">Horario Autorizado:</span>
+                      <span className="text-muted-foreground text-xs block">Horario Autorizado:</span>
                       <span className="font-mono text-foreground font-semibold">
-                        {startTime} a {endTime} ({calculatedHours} horas)
+                        {startTime} a {endTime}{hasSecondRange ? ` y ${startTime2} a ${endTime2}` : ''} ({calculatedHours} horas)
                       </span>
                     </div>
                   </div>
 
                   <div className="border-t pt-2 text-xs">
-                    <span className="text-muted-foreground text-[11px] block mb-1">Motivo / Justificación:</span>
+                    <span className="text-muted-foreground text-xs block mb-1">Motivo / Justificación:</span>
                     <p className="text-foreground italic bg-muted/30 p-2.5 rounded-lg border leading-relaxed">
                       "{reason}"
                     </p>
@@ -1083,6 +1183,7 @@ export function OvertimeWizardModal({
                     !date ||
                     !startTime ||
                     !endTime ||
+                    (hasSecondRange && (!startTime2 || !endTime2)) ||
                     calculatedHours <= 0 ||
                     Boolean(scheduleOverlapWarning) ||
                     (isBatchMode && batchDates.length === 0)

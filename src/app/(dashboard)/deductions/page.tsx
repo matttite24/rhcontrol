@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
+import { HeaderDateRange } from '@/components/layout/HeaderDateRange'
+import { StatusTabs, type StatusTab } from '@/components/ui/status-tabs'
+import { formatDateRangeShort } from '@/lib/shifts/format'
 import { buttonVariants } from '@/components/ui/button'
 import { NewDeductionButton } from '@/components/deductions/NewDeductionButton'
 import { DeductionsTableClient } from '@/components/deductions/DeductionsTableClient'
@@ -47,6 +50,7 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
     .from('employees')
     .select('*')
     .eq('organization_id', currentOrg.id)
+    .neq('status', 'inactivo')
     .order('full_name')
 
   const employees = employeesData || []
@@ -80,6 +84,7 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
     .select(
       `
       *,
+      deduction_roll_title,
       employee:employees (
         id,
         full_name,
@@ -93,37 +98,92 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
     )
     .eq('organization_id', currentOrg.id)
 
-  if (params.type) dataQuery = dataQuery.eq('deduction_type', params.type)
-  if (params.status) dataQuery = dataQuery.eq('status', params.status)
-  if (params.date_from) dataQuery = dataQuery.gte('date', params.date_from)
-  if (params.date_to) dataQuery = dataQuery.lte('date', params.date_to)
-  if (qFilter) dataQuery = dataQuery.or(qFilter)
+  // Filtro por estado visible. "En rol" se calcula en la base
+  // (deduction_roll_id, ver add_payroll_monthly_rolls.sql): un descuento en rol
+  // deja de contar como pendiente/vigente.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyStatusScope<Q extends { eq: any; is: any; not: any }>(q: Q, status: string): Q {
+    if (status === 'todos') return q
+    if (status === 'anulado') return q.eq('status', 'anulado')
+    if (status === 'en_rol') return q.not('deduction_roll_id', 'is', null)
+    return q.eq('status', status === 'vigente' ? 'aplicado' : 'pendiente').is('deduction_roll_id', null)
+  }
+
+  // Filtros comunes (todo menos el estado): se reutilizan para la lista, la
+  // suma total y los contadores de las pestañas, así todos ven exactamente
+  // el mismo conjunto de filas.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyBaseFilters<Q extends { eq: any; or: any; gte: any; lte: any }>(q: Q): Q {
+    let filtered = q
+    if (params.type) filtered = filtered.eq('deduction_type', params.type)
+    if (params.date_from) filtered = filtered.gte('date', params.date_from)
+    if (params.date_to) filtered = filtered.lte('date', params.date_to)
+    if (qFilter) filtered = filtered.or(qFilter)
+    return filtered
+  }
+
+  // "Todos" no filtra por estado; el resto filtra por su estado.
+  const statusFilter = params.status ?? 'todos'
+  dataQuery = applyBaseFilters(dataQuery)
+  dataQuery = applyStatusScope(dataQuery, statusFilter)
 
   dataQuery = dataQuery.order('created_at', { ascending: false }).range(rangeStart, rangeEnd)
 
-  // Suma total del MONTO de todos los registros que matchean el filtro (no
-  // solo los de la página actual) — se pide agregada a la base en vez de
-  // sumar en el cliente sobre una lista que ya no llega completa.
-  let sumQuery = supabase.from('deductions').select('amount').eq('organization_id', currentOrg.id)
-  if (params.type) sumQuery = sumQuery.eq('deduction_type', params.type)
-  if (params.status) sumQuery = sumQuery.eq('status', params.status)
-  if (params.date_from) sumQuery = sumQuery.gte('date', params.date_from)
-  if (params.date_to) sumQuery = sumQuery.lte('date', params.date_to)
-  if (qFilter) sumQuery = sumQuery.or(qFilter)
+  const countFor = (status: string) =>
+    applyStatusScope(
+      applyBaseFilters(
+        supabase
+          .from('deductions')
+          .select('id', { count: 'exact', head: true })
+          .eq('organization_id', currentOrg.id)
+      ),
+      status
+    )
 
-  const [{ data: deductionsData, count }, { data: sumData }] = await Promise.all([
+  const [
+    { data: deductionsData, count },
+    { count: allCount },
+    { count: pendingCount },
+    { count: currentCount },
+    { count: inRollCount },
+    { count: annulledCount },
+  ] = await Promise.all([
     dataQuery,
-    sumQuery,
+    countFor('todos'),
+    countFor('pendiente'),
+    countFor('vigente'),
+    countFor('en_rol'),
+    countFor('anulado'),
   ])
 
   const filteredDeductions = (deductionsData as Deduction[]) || []
   const totalCount = count ?? 0
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
-  const totalAmount = (sumData || []).reduce((sum, row: any) => sum + (Number(row.amount) || 0), 0)
 
   const hasFilters = Boolean(
-    params.q || params.type || params.status || params.date_from || params.date_to
+    params.q || params.type || params.date_from || params.date_to
   )
+  const hasDateRange = Boolean(params.date_from && params.date_to)
+
+  const statusTabs: StatusTab[] = [
+    { value: 'todos', label: 'Todos', count: allCount ?? 0, tone: 'neutral', alwaysShow: true },
+    { value: 'pendiente', label: 'Pendientes', count: pendingCount ?? 0, tone: 'warning' },
+    { value: 'vigente', label: 'Vigentes', count: currentCount ?? 0, tone: 'neutral' },
+    { value: 'en_rol', label: 'En rol', count: inRollCount ?? 0, tone: 'success' },
+    { value: 'anulado', label: 'Anulados', count: annulledCount ?? 0, tone: 'neutral' },
+  ]
+
+  function buildStatusHref(status: string) {
+    const sp = new URLSearchParams()
+    if (params.q) sp.set('q', params.q)
+    if (params.type) sp.set('type', params.type)
+    if (params.date_from) sp.set('date_from', params.date_from)
+    if (params.date_to) sp.set('date_to', params.date_to)
+    // "Todos" es la vista por defecto: no necesita parámetro.
+    if (status !== 'todos') sp.set('status', status)
+    const qs = sp.toString()
+    return qs ? `/deductions?${qs}` : '/deductions'
+  }
 
   function buildPageHref(page: number) {
     const sp = new URLSearchParams()
@@ -141,15 +201,25 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
     <div className="flex flex-col flex-1 min-h-screen">
       {/* Header oficial con botón de Nuevo Descuento */}
       <PageHeader
-        title="Descuentos"
-        description="Registro y auditoría de descuentos de caja, inventarios, multas y consumos"
-        showExport
+        title={hasDateRange ? `Descuentos · ${formatDateRangeShort(params.date_from!, params.date_to!)}` : 'Descuentos'}
+        description={
+          hasDateRange
+            ? `${allCount ?? 0} ${allCount === 1 ? 'descuento' : 'descuentos'} con fecha de descuento en este rango`
+            : 'Registro y auditoría de descuentos de caja, inventarios, multas y consumos'
+        }
         action={
-          <NewDeductionButton
-            organizationId={currentOrg.id}
-            organizationName={currentOrg.name}
-            employees={employees}
-          />
+          <>
+            <HeaderDateRange
+              placeholder="Fechas"
+              defaultFrom={params.date_from}
+              defaultTo={params.date_to}
+            />
+            <NewDeductionButton
+              organizationId={currentOrg.id}
+              organizationName={currentOrg.name}
+              employees={employees}
+            />
+          </>
         }
       />
 
@@ -158,7 +228,7 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
         search={{
           name: 'q',
           defaultValue: params.q,
-          placeholder: 'Buscar por empleado o motivo...',
+          placeholder: 'Empleado o motivo…',
         }}
         selects={[
           {
@@ -167,34 +237,17 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
             placeholder: 'Todos los tipos',
             options: DEDUCTION_TYPE_OPTIONS.map((t) => ({ value: t.type, label: t.title })),
           },
-          {
-            name: 'status',
-            defaultValue: params.status ?? '',
-            placeholder: 'Todos los estados',
-            options: [
-              { value: 'pendiente', label: 'Pendiente' },
-              { value: 'aplicado', label: 'Aplicado en Rol' },
-              { value: 'anulado', label: 'Anulado' },
-            ],
-          },
         ]}
-        dateRange={{
-          defaultFrom: params.date_from,
-          defaultTo: params.date_to,
-          placeholder: 'Rango de fecha del descuento',
-        }}
         hasFilters={hasFilters}
         clearHref="/deductions"
-        counter={
-          <div className="flex items-center gap-3">
-            <span>
-              {totalCount} {totalCount === 1 ? 'registro' : 'registros'}
-            </span>
-            <div className="h-3.5 w-px bg-border" />
-            <span className="font-semibold font-mono text-foreground">
-              Total: ${totalAmount.toLocaleString('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
-          </div>
+        className="bg-muted"
+        trailing={
+          <StatusTabs
+            ariaLabel="Estado de los descuentos"
+            tabs={statusTabs}
+            activeValue={statusFilter}
+            buildHref={buildStatusHref}
+          />
         }
       />
 
@@ -202,7 +255,7 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
       <div className="flex-1 w-full overflow-x-auto bg-card">
         {filteredDeductions.length > 0 ? (
           <>
-            <DeductionsTableClient deductions={filteredDeductions} organization={currentOrg} />
+            <DeductionsTableClient deductions={filteredDeductions} organization={currentOrg}  />
             <PaginationBar
               currentPage={currentPage}
               totalPages={totalPages}

@@ -1,5 +1,7 @@
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
+import { HeaderDateRange } from '@/components/layout/HeaderDateRange'
+import { StatusTabsSkeleton } from '@/components/ui/status-tabs'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 import { buttonVariants } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
@@ -28,19 +30,21 @@ export default function ShiftRequestsLoading() {
       <PageHeader
         title="Novedades"
         description="Registro y autorizaciones de horas extras, cambios de turno, permisos y ausencias"
-        showExport
         action={
+          <>
+            <HeaderDateRange placeholder="Fechas" />
           <button type="button" disabled className={cn(buttonVariants({ size: 'sm' }), 'gap-2 font-medium opacity-70')}>
             <Plus className="h-4 w-4" />
             Novedad
           </button>
+          </>
         }
       />
 
       <SubHeader
         search={{
           name: 'q',
-          placeholder: 'Buscar por empleado o motivo...',
+          placeholder: 'Empleado o motivo…',
         }}
         selects={[
           {
@@ -48,38 +52,27 @@ export default function ShiftRequestsLoading() {
             placeholder: 'Todos los tipos',
             options: SHIFT_REQUEST_TYPE_OPTIONS.map((t) => ({ value: t.type, label: t.title })),
           },
-          {
-            name: 'status',
-            placeholder: 'Todos los estados',
-            options: [
-              { value: 'pendiente', label: 'Pendiente' },
-              { value: 'aprobado', label: 'Aprobado' },
-              { value: 'rechazado', label: 'Rechazado' },
-              { value: 'anulado', label: 'Anulado' },
-            ],
-          },
         ]}
-        dateRange={{
-          placeholder: 'Rango de fecha de la novedad',
-        }}
-        counter="Cargando..."
+        className="bg-muted"
+        trailing={<StatusTabsSkeleton labels={['Pendientes', 'Aprobadas', 'Rechazadas', 'Anuladas', 'Todas']} />}
       />
 
       <div className="flex-1 w-full overflow-x-auto bg-card">
         <Table className="w-full">
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40 text-xs">
-              <TableHead className="w-[13%] pl-6 font-semibold">Emisión</TableHead>
-              <TableHead className="w-[24%] font-semibold">Empleado</TableHead>
-              <TableHead className="w-[34%] font-semibold">Tipo de Novedad</TableHead>
-              <TableHead className="w-[18%] font-semibold">Identificador</TableHead>
-              <TableHead className="w-[11%] pr-6 text-right font-semibold">Acciones</TableHead>
+              <TableHead className="w-[21%] pl-6 font-semibold">Empleado</TableHead>
+              <TableHead className="w-[30%] font-semibold">Tipo de Solicitud</TableHead>
+              <TableHead className="w-[16%] font-semibold">Fecha Autorizada</TableHead>
+              <TableHead className="w-[12%] font-semibold">Emisión</TableHead>
+              <TableHead className="w-[14%] font-semibold">Identificador</TableHead>
+              <TableHead className="w-[7%] pr-6 text-right font-semibold">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {Array.from({ length: 8 }).map((_, i) => (
               <TableRow key={i}>
-                <TableCell colSpan={5} className="py-2.5">
+                <TableCell colSpan={6} className="py-2.5">
                   <div className="h-8 w-full rounded-md bg-muted/50 animate-pulse" />
                 </TableCell>
               </TableRow>

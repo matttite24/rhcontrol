@@ -35,6 +35,7 @@ import { printWorkCertificateDocument } from '@/lib/incidents/print-work-certifi
 import { createWorkCertificateAction } from '@/lib/incidents/actions'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface WorkCertificateWizardModalProps {
   organizationId: string
@@ -434,7 +435,7 @@ export function WorkCertificateWizardModal({
                         setStillWorking(false)
                         setStillWorkingTouched(true)
                         if (!terminationDate) {
-                          setTerminationDate(selectedEmp.termination_date || new Date().toISOString().split('T')[0])
+                          setTerminationDate(selectedEmp.termination_date || getEcuadorTodayIso())
                         }
                       }}
                       className={cn(

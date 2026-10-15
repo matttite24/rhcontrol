@@ -3,6 +3,7 @@
 import { Organization } from '@/types/employee'
 import { DeliveryAssetItem } from '@/lib/incidents/constants'
 import { buildDocumentHeader, DOCUMENT_HEADER_STYLES } from '@/lib/print/document-header'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 export interface PrintInventoryDeductionData {
   organization?: Partial<Organization> | null
@@ -51,7 +52,7 @@ export function printInventoryDeductionDocument(data: PrintInventoryDeductionDat
 
   const isCanceled = data.status === 'anulado'
   const issueDateFormatted = formatLongDate(
-    data.issueDate || new Date().toISOString().split('T')[0]
+    data.issueDate || getEcuadorTodayIso()
   )
   const deductionDateFormatted = formatLongDate(data.deductionDate)
 

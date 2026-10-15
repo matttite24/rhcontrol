@@ -14,20 +14,15 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { DEDUCTION_TYPE_OPTIONS } from '@/lib/deductions/constants'
-import { Deduction, DeductionStatus, Organization } from '@/types/employee'
+import { Deduction, Organization } from '@/types/employee'
 import { DollarSign, Repeat, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DeductionDetailModal } from './DeductionDetailModal'
+import { DEDUCTION_DISPLAY_STATUS, resolveDeductionDisplayStatus } from '@/lib/deductions/status'
 
 interface DeductionsTableClientProps {
   deductions: Deduction[]
   organization?: Organization | null
-}
-
-const statusConfig: Record<DeductionStatus, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
-  pendiente: { label: 'Pendiente', variant: 'outline' },
-  aplicado:  { label: 'Aplicado en Rol', variant: 'default' },
-  anulado:   { label: 'Anulado', variant: 'destructive' },
 }
 
 function getInitials(name: string) {
@@ -71,7 +66,8 @@ export function DeductionsTableClient({ deductions, organization }: DeductionsTa
             {deductions.map((item) => {
               const typeMeta = DEDUCTION_TYPE_OPTIONS.find((t) => t.type === item.deduction_type)
               const TypeIcon = typeMeta?.icon || DollarSign
-              const status = statusConfig[item.status] ?? statusConfig.pendiente
+              const rollTitle = item.deduction_roll_title ?? null
+              const status = DEDUCTION_DISPLAY_STATUS[resolveDeductionDisplayStatus(item.status, Boolean(rollTitle))]
 
               return (
                 <TableRow key={item.id} className="hover:bg-muted/40 transition-colors text-xs">
@@ -148,7 +144,11 @@ export function DeductionsTableClient({ deductions, organization }: DeductionsTa
 
                   {/* Estado */}
                   <TableCell className="py-3.5">
-                    <Badge variant={status.variant} className="text-[11px]">
+                    <Badge
+                      variant="outline"
+                      className={cn('text-[11px] border', status.badgeClass)}
+                      title={rollTitle ? `Descontado en el rol «${rollTitle}»` : undefined}
+                    >
                       {status.label}
                     </Badge>
                   </TableCell>
@@ -185,6 +185,7 @@ export function DeductionsTableClient({ deductions, organization }: DeductionsTa
           setSelectedDeduction(updated)
         }}
         organization={organization}
+        rollTitle={selectedDeduction?.deduction_roll_title ?? null}
       />
     </>
   )

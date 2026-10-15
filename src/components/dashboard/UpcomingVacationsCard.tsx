@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Plane } from 'lucide-react'
-import { getEcuadorNow, getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
+import { getEcuadorDateIso, getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 import { Organization, ShiftRequest } from '@/types/employee'
 
 function getInitials(name: string) {
@@ -12,7 +12,7 @@ function getInitials(name: string) {
 export async function UpcomingVacationsCard({ currentOrg }: { currentOrg: Organization }) {
   const supabase = await createClient()
   const todayIso = getEcuadorTodayIso()
-  const in30DaysIso = new Date(getEcuadorNow().getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const in30DaysIso = getEcuadorDateIso(30)
 
   const { data } = await supabase
     .from('shift_requests')

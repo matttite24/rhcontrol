@@ -467,7 +467,7 @@ export function VacationWizardModal({
                       <Label className="text-xs font-semibold text-foreground">
                         Empleados que cumplen el requisito legal (&gt; 1 año de antigüedad)
                       </Label>
-                      <Badge variant="outline" className="text-[10px] font-mono text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300">
+                      <Badge variant="outline" className="text-xs font-mono text-emerald-700 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300">
                         {eligibleEmployees.length} habilitados
                       </Badge>
                     </div>
@@ -483,10 +483,10 @@ export function VacationWizardModal({
                     const sen = getEmployeeSeniority(emp.hire_date)
                     return (
                       <div className="text-right shrink-0 pl-2">
-                        <Badge variant="outline" className="text-[10px] font-mono border-emerald-200 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-300">
+                        <Badge variant="outline" className="text-xs font-mono border-emerald-200 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-300">
                           {sen.years} año(s) servicio
                         </Badge>
-                        <span className="block text-[10px] text-muted-foreground mt-0.5 font-mono">
+                        <span className="block text-xs text-muted-foreground mt-0.5 font-mono">
                           Ingreso: {emp.hire_date || '—'}
                         </span>
                       </div>
@@ -503,7 +503,7 @@ export function VacationWizardModal({
                 <div className="flex items-center gap-3 p-3 rounded-xl border bg-card">
                   <Avatar className="h-9 w-9 ring-1 ring-border">
                     <AvatarImage src={selectedEmp.avatar_url ?? undefined} alt={selectedEmp.full_name} />
-                    <AvatarFallback className="text-[11px] font-bold">
+                    <AvatarFallback className="text-xs font-bold">
                       {getInitials(selectedEmp.full_name)}
                     </AvatarFallback>
                   </Avatar>
@@ -511,7 +511,7 @@ export function VacationWizardModal({
                     <h4 className="text-xs font-bold text-foreground truncate">
                       {selectedEmp.full_name}
                     </h4>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       C.I: {selectedEmp.national_id || '—'} • {selectedEmp.position} • Ingreso: {selectedEmp.hire_date}
                     </p>
                   </div>
@@ -573,7 +573,7 @@ export function VacationWizardModal({
                       <span className="font-medium text-foreground">
                         Adelantar días del período vigente ({currentPeriodLabel})
                       </span>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         El empleado ya no tiene saldo tomable, pero puedes autorizar hasta{' '}
                         <strong className="text-foreground">{Math.max(0, annualLawDays - usedDays)} días</strong> del
                         año completo (aún no acumulados proporcionalmente) — nunca más del máximo anual por ley.
@@ -665,7 +665,7 @@ export function VacationWizardModal({
                           <p className="font-semibold">
                             Supera el límite de días disponibles
                           </p>
-                          <p className="text-[11px] opacity-90 leading-relaxed">
+                          <p className="text-xs opacity-90 leading-relaxed">
                             Has seleccionado <strong>{requestedDays} días</strong>, pero el empleado solo dispone de <strong>{availableDays} días</strong> para este período. Por favor ajusta la fecha de finalización.
                           </p>
                         </div>
@@ -723,7 +723,7 @@ export function VacationWizardModal({
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground font-medium">Estado inicial:</span>
-                        <Badge variant="outline" className="text-[10px] font-mono text-orange-700 bg-orange-50 border-orange-200">
+                        <Badge variant="outline" className="text-xs font-mono text-orange-700 bg-orange-50 border-orange-200">
                           Pendiente de Aprobación
                         </Badge>
                       </div>

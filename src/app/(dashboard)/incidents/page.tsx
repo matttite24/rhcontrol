@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
+import { HeaderDateRange } from '@/components/layout/HeaderDateRange'
+import { formatDateRangeShort } from '@/lib/shifts/format'
+import { StatusTabs, type StatusTab } from '@/components/ui/status-tabs'
 import {
   Table,
   TableHeader,
@@ -66,6 +69,8 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
     )
   }
 
+  const hasDateRange = Boolean(params.date_from && params.date_to)
+
   const currentPage = Math.max(1, parseInt(params.page || '1', 10) || 1)
   const rangeStart = (currentPage - 1) * PAGE_SIZE
   const rangeEnd = rangeStart + PAGE_SIZE - 1
@@ -123,35 +128,91 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
     .order('created_at', { ascending: false })
     .range(rangeStart, rangeEnd)
 
-  if (params.type) {
-    query = query.or(`incident_type.eq.${params.type},metadata->>sub_type.eq.${params.type}`)
-  }
-  if (params.status) {
-    query = query.eq('status', params.status)
-  }
-  if (params.date_from) {
-    query = query.gte('start_date', params.date_from)
-  }
-  if (params.date_to) {
-    query = query.lte('start_date', params.date_to)
-  }
-  if (params.q) {
-    const term = params.q
-    const idsFilter = (matchingEmployeeIds ?? []).length > 0
-      ? `,employee_id.in.(${matchingEmployeeIds!.join(',')})`
-      : ''
-    query = query.or(`title.ilike.%${term}%${idsFilter}`)
+  // Filtros comunes (todo menos el estado): se reutilizan para la lista y para
+  // los contadores de las pestañas, así los números coinciden con cada vista.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyBaseFilters<Q extends { eq: any; or: any; gte: any; lte: any }>(q: Q): Q {
+    let filtered = q
+    if (params.type) {
+      filtered = filtered.or(`incident_type.eq.${params.type},metadata->>sub_type.eq.${params.type}`)
+    }
+    if (params.date_from) filtered = filtered.gte('start_date', params.date_from)
+    if (params.date_to) filtered = filtered.lte('start_date', params.date_to)
+    if (params.q) {
+      const idsFilter = (matchingEmployeeIds ?? []).length > 0
+        ? `,employee_id.in.(${matchingEmployeeIds!.join(',')})`
+        : ''
+      filtered = filtered.or(`title.ilike.%${params.q}%${idsFilter}`)
+    }
+    return filtered
   }
 
-  const { data: incidents, error, count } = await query
+  // "Todas" no filtra por estado; el resto filtra por su estado.
+  const statusFilter = params.status ?? 'todos'
+  query = applyBaseFilters(query)
+  if (statusFilter !== 'todos') {
+    query = query.eq('status', statusFilter)
+  }
+
+  const countFor = (status?: string) => {
+    let q = applyBaseFilters(
+      supabase
+        .from('incidents')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', currentOrg.id)
+        .neq('incident_type', 'permiso_laboral')
+        .neq('incident_type', 'solicitud_vacaciones')
+    )
+    if (status) q = q.eq('status', status)
+    return q
+  }
+
+  const [
+    { data: incidents, error, count },
+    { count: allCount },
+    { count: pendingCount },
+    { count: registeredCount },
+    { count: approvedCount },
+    { count: rejectedCount },
+    { count: annulledCount },
+  ] = await Promise.all([
+    query,
+    countFor(),
+    countFor('pendiente'),
+    countFor('registrado'),
+    countFor('aprobado'),
+    countFor('rechazado'),
+    countFor('anulado'),
+  ])
 
   const filteredIncidents = (incidents as Incident[]) || []
   const totalCount = count ?? 0
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
 
   const hasFilters = Boolean(
-    params.q || params.type || params.status || params.date_from || params.date_to
+    params.q || params.type || params.date_from || params.date_to
   )
+
+  const statusTabs: StatusTab[] = [
+    { value: 'todos', label: 'Todas', count: allCount ?? 0, tone: 'neutral', alwaysShow: true },
+    { value: 'pendiente', label: 'Pendientes', count: pendingCount ?? 0, tone: 'warning' },
+    { value: 'registrado', label: 'Registradas', count: registeredCount ?? 0, tone: 'neutral' },
+    { value: 'aprobado', label: 'Aprobadas', count: approvedCount ?? 0, tone: 'success' },
+    { value: 'rechazado', label: 'Rechazadas', count: rejectedCount ?? 0, tone: 'danger' },
+    { value: 'anulado', label: 'Anuladas', count: annulledCount ?? 0, tone: 'neutral' },
+  ]
+
+  function buildStatusHref(status: string) {
+    const sp = new URLSearchParams()
+    if (params.q) sp.set('q', params.q)
+    if (params.type) sp.set('type', params.type)
+    if (params.date_from) sp.set('date_from', params.date_from)
+    if (params.date_to) sp.set('date_to', params.date_to)
+    // "Todas" es la vista por defecto: no necesita parámetro.
+    if (status !== 'todos') sp.set('status', status)
+    const qs = sp.toString()
+    return qs ? `/incidents?${qs}` : '/incidents'
+  }
 
   function buildPageHref(page: number) {
     const sp = new URLSearchParams()
@@ -169,15 +230,25 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
     <div className="flex flex-col flex-1 min-h-screen">
       {/* Header con botón para Nueva Incidencia (Abre modal) */}
       <PageHeader
-        title="Incidencias"
-        description="Registros, solicitudes y documentación del personal"
-        showExport
+        title={hasDateRange ? `Incidencias · ${formatDateRangeShort(params.date_from!, params.date_to!)}` : 'Incidencias'}
+        description={
+          hasDateRange
+            ? `${allCount ?? 0} ${allCount === 1 ? 'registro' : 'registros'} con fecha de evento en este rango`
+            : 'Registros, solicitudes y documentación del personal'
+        }
         action={
-          <NewIncidentButton
-            organizationId={currentOrg.id}
-            organizationName={currentOrg.name}
-            employees={employees}
-          />
+          <>
+            <HeaderDateRange
+              placeholder="Fechas"
+              defaultFrom={params.date_from}
+              defaultTo={params.date_to}
+            />
+            <NewIncidentButton
+              organizationId={currentOrg.id}
+              organizationName={currentOrg.name}
+              employees={employees}
+            />
+          </>
         }
       />
 
@@ -186,7 +257,7 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
         search={{
           name: 'q',
           defaultValue: params.q,
-          placeholder: 'Buscar por empleado o motivo...',
+          placeholder: 'Empleado o motivo…',
         }}
         selects={[
           {
@@ -201,27 +272,18 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
               label: t.title,
             })),
           },
-          {
-            name: 'status',
-            defaultValue: params.status ?? '',
-            placeholder: 'Todos los estados',
-            options: [
-              { value: 'registrado', label: 'Registrado' },
-              { value: 'aprobado', label: 'Aprobado' },
-              { value: 'pendiente', label: 'Pendiente' },
-              { value: 'rechazado', label: 'Rechazado' },
-              { value: 'anulado', label: 'Anulado' },
-            ],
-          },
         ]}
-        dateRange={{
-          defaultFrom: params.date_from,
-          defaultTo: params.date_to,
-          placeholder: 'Rango de fecha del evento',
-        }}
         hasFilters={hasFilters}
         clearHref="/incidents"
-        counter={`${totalCount} ${totalCount === 1 ? 'registro' : 'registros'}`}
+        className="bg-muted"
+        trailing={
+          <StatusTabs
+            ariaLabel="Estado de las incidencias"
+            tabs={statusTabs}
+            activeValue={statusFilter}
+            buildHref={buildStatusHref}
+          />
+        }
       />
 
       {/* Tabla a Ancho Completo */}

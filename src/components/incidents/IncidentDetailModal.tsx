@@ -56,6 +56,7 @@ import { NonCompliantDetailContent } from './detail/NonCompliantDetailContent'
 import { VacationDetailContent } from './detail/VacationDetailContent'
 import { LeavePermissionDetailContent } from './detail/LeavePermissionDetailContent'
 import { GenericIncidentContent } from './detail/GenericIncidentContent'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface IncidentDetailModalProps {
   incident: Incident | null
@@ -403,7 +404,7 @@ export function IncidentDetailModal({
         department: incident.employee?.department || '',
         position: incident.employee?.position || '',
         leaveUnit: metadata.leave_unit || 'dias',
-        startDate: incident.start_date || new Date().toISOString().split('T')[0],
+        startDate: incident.start_date || getEcuadorTodayIso(),
         endDate: incident.end_date || undefined,
         daysCount: metadata.requested_days || 1,
         hoursCount: metadata.requested_hours || 0,
@@ -469,7 +470,7 @@ export function IncidentDetailModal({
         startYear: incMeta.start_year || new Date().getFullYear(),
         schedule: incMeta.schedule || [],
         reason: incident.description || '',
-        requestDate: incMeta.request_date || incident.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+        requestDate: incMeta.request_date || incident.created_at?.split('T')[0] || getEcuadorTodayIso(),
         status: incident.status,
         documentCode: docCode,
       })
@@ -761,21 +762,21 @@ export function IncidentDetailModal({
         {payrollLock && <ClosedPayrollLockNotice lock={payrollLock} />}
 
         {/* Footer con Acciones de Aprobación */}
-        <div className="p-4 border-t bg-muted/10 flex items-center justify-between gap-2 shrink-0">
+        <div className="p-4 border-t bg-muted/10 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0 overflow-y-auto">
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={handlePrint}
             disabled={isRejected || isCanceled || loading || cancelLoading}
-            className="gap-2 cursor-pointer font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+            className="gap-2 cursor-pointer font-medium disabled:opacity-40 disabled:cursor-not-allowed w-full sm:w-auto text-muted-foreground hover:text-foreground"
             title={isRejected ? 'No disponible para solicitudes rechazadas' : isCanceled ? 'No disponible para solicitudes anuladas' : undefined}
           >
             <Printer className="h-4 w-4" />
-            Imprimir Formato
+            Imprimir
           </Button>
 
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-2 [&>*:only-child]:col-span-2">
             {!isCanceled && !payrollLock && (
               <Button
                 type="button"

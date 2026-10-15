@@ -37,6 +37,7 @@ import {
 import { getDeductionCode } from '@/lib/deductions/sequence'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface InventoryDeductionWizardModalProps {
   organizationId: string
@@ -95,7 +96,7 @@ export function InventoryDeductionWizardModal({
   const [selectedActId, setSelectedActId] = useState<string>('')
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = getEcuadorTodayIso()
   const [deductionDate, setDeductionDate] = useState<string>(today)
   const [additionalInfo, setAdditionalInfo] = useState<string>('')
 
@@ -535,7 +536,7 @@ export function InventoryDeductionWizardModal({
                     <div className="p-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2">
                       <Info className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
                       <div>
-                        Este descuento no requiere aprobación: quedará registrado como <strong>Aplicado en Rol</strong> de inmediato. Podrá anularse después, lo que liberará los bienes seleccionados.
+                        Este descuento no requiere aprobación: quedará registrado como <strong>Vigente</strong> de inmediato. Podrá anularse después, lo que liberará los bienes seleccionados.
                       </div>
                     </div>
                   </>
@@ -554,7 +555,7 @@ export function InventoryDeductionWizardModal({
                     Descuento por Inventario Registrado
                   </h3>
                   <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                    El descuento quedó registrado con estado <strong>Aplicado en Rol</strong>. Puedes anularlo posteriormente desde el detalle, lo que liberará los bienes para corrección.
+                    El descuento quedó registrado con estado <strong>Vigente</strong>. Puedes anularlo posteriormente desde el detalle, lo que liberará los bienes para corrección.
                   </p>
                 </div>
 

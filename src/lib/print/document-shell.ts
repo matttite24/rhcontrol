@@ -1,6 +1,7 @@
 'use client'
 
 import { Organization } from '@/types/employee'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 import {
   buildDocumentHeader,
   DOCUMENT_HEADER_STYLES,
@@ -180,7 +181,7 @@ export const DOCUMENT_SHELL_STYLES = `
 
 export function renderDocumentShell(opts: DocumentShellOptions): string {
   const issueDateFormatted = formatLongDate(
-    opts.issueDate || new Date().toISOString().split('T')[0]
+    opts.issueDate || getEcuadorTodayIso()
   )
   const { orgLegalName } = resolveOrgHeaderFields(opts.organization, opts.organizationName)
   const footerNote =

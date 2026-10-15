@@ -37,15 +37,15 @@ export function DetailModalHeader({
   onClose,
 }: DetailModalHeaderProps) {
   return (
-    <DialogHeader className={cn("p-6 pb-4 border-b shrink-0 transition-colors", headerBg)}>
+    <DialogHeader className={cn("p-4 sm:p-6 pb-4 border-b shrink-0 transition-colors", headerBg)}>
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className={cn("p-2.5 rounded-xl border shrink-0 bg-background/80 shadow-2xs", accentText)}>
             <Icon className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <DialogTitle className="text-base font-bold text-foreground truncate">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <DialogTitle className="text-base font-bold text-foreground sm:truncate">
                 {title}
               </DialogTitle>
               <Badge
@@ -55,7 +55,7 @@ export function DetailModalHeader({
                 {statusLabel}
               </Badge>
             </div>
-            <DialogDescription className="text-xs text-muted-foreground font-mono mt-0.5 truncate">
+            <DialogDescription className="text-xs text-muted-foreground font-mono mt-0.5 sm:truncate">
               {documentCode && <span className="font-semibold text-foreground">{documentCode}</span>}
               {documentCode && ' • '}
               Fecha de registro: {registeredAtLabel}

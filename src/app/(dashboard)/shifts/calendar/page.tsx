@@ -58,6 +58,7 @@ export default async function ShiftCalendarPage({ searchParams }: ShiftCalendarP
       schedules:employee_schedules (*)
     `)
     .eq('organization_id', currentOrg.id)
+    .neq('status', 'inactivo')
     .order('full_name')
 
   if (params.department) {

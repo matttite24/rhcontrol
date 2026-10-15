@@ -44,6 +44,7 @@ import {
 } from '@/lib/incidents/actions'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface NonCompliantWizardModalProps {
   organizationId: string
@@ -123,7 +124,7 @@ export function NonCompliantWizardModal({
   const [loadingActivities, setLoadingActivities] = useState(false)
 
   // Datos del paso 2
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+  const todayStr = useMemo(() => getEcuadorTodayIso(), [])
   const [incidentDate, setIncidentDate] = useState<string>(todayStr)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
     NON_COMPLIANT_CATEGORIES[0].id

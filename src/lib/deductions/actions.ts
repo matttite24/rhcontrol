@@ -5,6 +5,7 @@ import { Deduction } from '@/types/employee'
 import { DeliveryAssetItem } from '@/lib/incidents/constants'
 import { revalidatePath } from 'next/cache'
 import { getNextDeductionSequenceCode } from './sequence'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 export interface DeliveryActWithAvailableItems {
   id: string
@@ -87,7 +88,7 @@ export interface CreateCashShortageDeductionParams {
 
 /**
  * Crea un descuento por Faltante de Caja.
- * No requiere aprobación: queda directamente como "Aplicado en Rol".
+ * No requiere aprobación: queda directamente como "aplicado" (Vigente en la UI; pasa a "En rol" al descontarse en un rol generado).
  * Puede anularse posteriormente mediante cancelDeductionAction.
  */
 export async function createCashShortageDeductionAction(
@@ -201,7 +202,7 @@ export interface CreateDisciplinaryFineDeductionParams {
  *   remuneración mensual del trabajador por concepto de multas. Se valida
  *   en servidor además de en el cliente, como defensa en profundidad.
  *
- * No requiere aprobación: queda directamente como "Aplicado en Rol".
+ * No requiere aprobación: queda directamente como "aplicado" (Vigente en la UI; pasa a "En rol" al descontarse en un rol generado).
  * Puede anularse posteriormente mediante cancelDeductionAction.
  */
 export async function createDisciplinaryFineDeductionAction(
@@ -322,7 +323,7 @@ export interface CreateInventoryDeductionParams {
  * acta que se están descontando (no se admite monto libre desvinculado de
  * bienes realmente entregados).
  *
- * No requiere aprobación: queda directamente como "Aplicado en Rol".
+ * No requiere aprobación: queda directamente como "aplicado" (Vigente en la UI; pasa a "En rol" al descontarse en un rol generado).
  * Puede anularse posteriormente mediante cancelDeductionAction, lo que
  * libera los ítems para que puedan corregirse/re-descontarse si aplica.
  */
@@ -864,7 +865,7 @@ export async function createQuirografarioDeductionAction(
     )
 
     const loanGroupId = crypto.randomUUID()
-    const today = new Date().toISOString().split('T')[0]
+    const today = getEcuadorTodayIso()
 
     const rows = params.installmentAmounts.map((rawAmount, i) => {
       const amount = Number(rawAmount.toFixed(2))

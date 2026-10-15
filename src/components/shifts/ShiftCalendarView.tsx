@@ -21,6 +21,7 @@ import { toast } from '@/components/ui/toast'
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Moon, Filter, Check, ChevronDown, RefreshCw, Palmtree, CalendarSearch, Info, UserX, CalendarOff, Fingerprint } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getInitials, addDaysToIso, getVacationRange, getLeavePermitRange } from '@/lib/shifts/format'
+import { formatTimeHHmm } from '@/lib/shifts/time'
 
 interface EmployeeWithSchedule extends Employee {
   schedules?: EmployeeSchedule[]
@@ -84,7 +85,7 @@ interface DayChangeDetail {
  * propio empleado (`sched`), y solo si tampoco existe se usan los defaults
  * literales como último recurso.
  */
-function getEffectiveSchedule(
+function resolveEffectiveSchedule(
   sched: EmployeeSchedule | undefined,
   scheduleChangeReq: ShiftRequest | undefined,
   dayChangeDetail: DayChangeDetail | undefined,
@@ -130,6 +131,22 @@ function getEffectiveSchedule(
   }
 }
 
+
+function getEffectiveSchedule(
+  sched: EmployeeSchedule | undefined,
+  scheduleChangeReq: ShiftRequest | undefined,
+  dayChangeDetail: DayChangeDetail | undefined,
+  rotatingIsWorkday: boolean | undefined
+) {
+  const eff = resolveEffectiveSchedule(sched, scheduleChangeReq, dayChangeDetail, rotatingIsWorkday)
+  return {
+    ...eff,
+    start1: formatTimeHHmm(eff.start1),
+    end1: formatTimeHHmm(eff.end1),
+    start2: formatTimeHHmm(eff.start2),
+    end2: formatTimeHHmm(eff.end2),
+  }
+}
 
 // Obtener rango de fechas según selección (8 días, 15 días o mes completo)
 function getRangeDates(baseDate: Date, range: ViewRange) {
@@ -448,7 +465,7 @@ export function ShiftCalendarView({
     <>
       <div className="flex flex-col w-full">
         {/* Controles del Calendario fijados y a ancho completo */}
-        <div className="relative flex flex-wrap items-center justify-between gap-3 bg-card px-6 py-2.5 sticky top-0 z-20 w-full after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-border after:to-transparent">
+        <div className="relative flex flex-wrap items-center justify-between gap-3 bg-card px-6 py-2.5 sticky top-0 z-20 w-full border-b border-border">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
               <CalendarIcon className="h-4 w-4" />
@@ -459,12 +476,12 @@ export function ShiftCalendarView({
                   {viewRange === 'month' ? monthName : `${startFormatted} — ${endFormatted}`}
                 </span>
                 {isCurrentPeriod && (
-                  <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30">
+                  <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
                     Actual
                   </Badge>
                 )}
               </div>
-              <p className="text-[11px] text-muted-foreground font-mono">
+              <p className="text-xs text-muted-foreground font-mono">
                 {rangeDates.length} días visualizados · {employees.length}{' '}
                 {employees.length === 1 ? 'empleado' : 'empleados'}
               </p>
@@ -472,34 +489,66 @@ export function ShiftCalendarView({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Ir a fecha específica */}
+            {/* Navegación: ir a fecha · anterior · hoy · siguiente */}
+            <div className="flex items-center gap-1">
             <Popover open={goToDateOpen} onOpenChange={setGoToDateOpen}>
-              <PopoverTrigger
-                render={
-                  <button
-                    type="button"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background text-xs shadow-xs hover:bg-accent hover:text-accent-foreground transition-[color,background-color,transform] duration-150 ease-out motion-reduce:transition-none active:scale-90 cursor-pointer"
-                    title="Ir a fecha"
-                    aria-label="Ir a fecha"
+                <PopoverTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background text-xs shadow-xs hover:bg-accent hover:text-accent-foreground transition-[color,background-color,transform] duration-150 ease-out motion-reduce:transition-none active:scale-90 cursor-pointer"
+                      title="Ir a fecha"
+                      aria-label="Ir a fecha"
+                    />
+                  }
+                >
+                  <CalendarSearch className="h-4 w-4" />
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 rounded-md shadow-lg border" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={currentBaseDate}
+                    onSelect={handleGoToDate}
+                    locale={es}
+                    captionLayout="dropdown"
+                    startMonth={new Date(1940, 0)}
+                    endMonth={new Date(2040, 11)}
+                    autoFocus
                   />
-                }
+                </PopoverContent>
+              </Popover>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={handlePrev}
+                aria-label="Período anterior"
+                className="h-8 w-8 cursor-pointer transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90"
               >
-                <CalendarSearch className="h-4 w-4" />
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 rounded-md shadow-lg border" align="start">
-                <Calendar
-                  mode="single"
-                  selected={currentBaseDate}
-                  onSelect={handleGoToDate}
-                  locale={es}
-                  captionLayout="dropdown"
-                  startMonth={new Date(1940, 0)}
-                  endMonth={new Date(2040, 11)}
-                  autoFocus
-                />
-              </PopoverContent>
-            </Popover>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleToday}
+                className="h-8 text-xs cursor-pointer transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95"
+              >
+                Hoy
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={handleNext}
+                aria-label="Período siguiente"
+                className="h-8 w-8 cursor-pointer transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
 
+            <div className="h-6 w-px bg-border" aria-hidden="true" />
+
+            {/* Vista: rango de días y agrupación */}
+            <div className="flex items-center gap-2">
             {/* Selector de Rango: 8 días, 15 días, Mes Completo */}
             <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border text-xs">
               <button
@@ -534,46 +583,6 @@ export function ShiftCalendarView({
               </button>
             </div>
 
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleToday}
-                className="h-8 text-xs cursor-pointer transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95"
-              >
-                Hoy
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                onClick={handlePrev}
-                aria-label="Período anterior"
-                className="h-8 w-8 cursor-pointer transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                onClick={handleNext}
-                aria-label="Período siguiente"
-                className="h-8 w-8 cursor-pointer transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-                title="Actualizar datos"
-                aria-label="Actualizar datos del calendario"
-                className="h-8 w-8 cursor-pointer transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90"
-              >
-                <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-              </Button>
-            </div>
-
             {/* Agrupar por departamento: solo tiene sentido si se ven varios a la vez */}
             {!currentDepartment && (
               <button
@@ -597,6 +606,23 @@ export function ShiftCalendarView({
               </button>
             )}
 
+            </div>
+
+            <div className="h-6 w-px bg-border" aria-hidden="true" />
+
+            {/* Utilidades: actualizar y leyenda */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                title="Actualizar datos"
+                aria-label="Actualizar datos del calendario"
+                className="h-8 w-8 cursor-pointer transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90"
+              >
+                <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+              </Button>
             {/* Leyenda de colores/badges del calendario */}
             <Popover>
               <PopoverTrigger
@@ -613,7 +639,7 @@ export function ShiftCalendarView({
               </PopoverTrigger>
               <PopoverContent align="end" className="w-64 p-3 rounded-md shadow-lg border space-y-2.5">
                 <p className="text-xs font-semibold text-foreground border-b pb-2">Leyenda del Calendario</p>
-                <div className="space-y-1.5 text-[11px]">
+                <div className="space-y-1.5 text-xs">
                   <div className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-sm bg-rose-500/20 border border-rose-500/40 shrink-0" />
                     <span className="text-muted-foreground">Feriado</span>
@@ -657,6 +683,10 @@ export function ShiftCalendarView({
                 </div>
               </PopoverContent>
             </Popover>
+
+            </div>
+
+            <div className="h-6 w-px bg-border" aria-hidden="true" />
 
             {/* Botón "Novedad" — movido aquí desde el PageHeader para
                 recuperar altura vertical de la tabla. */}
@@ -757,7 +787,6 @@ export function ShiftCalendarView({
                   return (
                     <th
                       key={dayDate.toISOString()}
-                      onClick={isHoliday ? () => toast.info('Día Feriado', holidayName) : undefined}
                       className={cn(
                         "p-2 text-center font-medium border-l border-border/50 min-w-[110px]",
                         isToday && "bg-primary/20 text-primary font-bold ring-1 ring-inset ring-primary/40",
@@ -765,12 +794,12 @@ export function ShiftCalendarView({
                         // (slate-200/800): las opacidades pensadas para bg-muted quedaban
                         // planas aquí.
                         isWeekend && !isToday && !isHoliday && "bg-slate-300/60 dark:bg-slate-950/40",
-                        isHoliday && !isToday && "bg-rose-500/20 cursor-pointer"
+                        isHoliday && !isToday && "bg-rose-500/20"
                       )}
                       title={holidayName ? `Feriado: ${holidayName}` : undefined}
                     >
                       <div className="flex flex-col items-center">
-                        <span className={cn("text-[10px] uppercase tracking-[0.02em] font-medium", isWeekend ? "text-muted-foreground/70" : "text-muted-foreground")}>
+                        <span className={cn("text-xs uppercase tracking-[0.02em] font-medium", isWeekend ? "text-muted-foreground/70" : "text-muted-foreground")}>
                           {dayName}
                         </span>
                         <span className={cn(
@@ -786,9 +815,10 @@ export function ShiftCalendarView({
                         {isHoliday && (
                           <Badge
                             variant="outline"
-                            className="mt-0.5 text-[10px] px-1.5 py-0 h-4 bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400 font-semibold"
+                            className="mt-0.5 text-xs px-1.5 py-0 h-4 bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400 font-semibold"
                           >
                             Feriado
+                            <span className="sr-only">: {holidayName}</span>
                           </Badge>
                         )}
                       </div>
@@ -814,7 +844,7 @@ export function ShiftCalendarView({
                         aria-expanded={!row.collapsed}
                         title={row.collapsed ? `Mostrar ${row.department}` : `Ocultar ${row.department}`}
                       >
-                        <td className="sticky left-0 z-10 px-6 py-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-muted/60 border-y border-r border-border/60 whitespace-nowrap select-none">
+                        <td className="sticky left-0 z-10 px-6 py-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground bg-muted/60 border-y border-r border-border/60 whitespace-nowrap select-none">
                           <span className="inline-flex items-center gap-1.5">
                             <ChevronRight
                               className={cn(
@@ -847,7 +877,7 @@ export function ShiftCalendarView({
                           >
                             <Avatar className="h-7 w-7 ring-1 ring-border">
                               <AvatarImage src={emp.avatar_url ?? undefined} alt={emp.full_name} />
-                              <AvatarFallback className="text-[10px] font-semibold">
+                              <AvatarFallback className="text-xs font-semibold">
                                 {getInitials(emp.full_name)}
                               </AvatarFallback>
                             </Avatar>
@@ -856,7 +886,7 @@ export function ShiftCalendarView({
                             <span className="font-semibold text-foreground truncate max-w-[270px]" title={emp.full_name}>
                               {emp.full_name}
                             </span>
-                            <span className="text-[11px] text-muted-foreground truncate max-w-[270px]" title={emp.position || undefined}>
+                            <span className="text-xs text-muted-foreground truncate max-w-[270px]" title={emp.position || undefined}>
                               {emp.position || '—'}
                             </span>
                           </div>
@@ -937,7 +967,7 @@ export function ShiftCalendarView({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenRequest(vacationReq)}
-                                  className="inline-flex items-center justify-center gap-1 py-1 px-2 rounded-md border border-emerald-500/30 bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-bold text-[10px] shadow-2xs transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer w-full"
+                                  className="inline-flex items-center justify-center gap-1 py-1 px-2 rounded-md border border-emerald-500/30 bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-bold text-xs shadow-2xs transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer w-full"
                                   title={`Vacaciones Aprobadas (${vacationReq.metadata?.settlement_period || ''}) • Clic para ver detalle`}
                                 >
                                   <Palmtree className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
@@ -966,14 +996,14 @@ export function ShiftCalendarView({
                               <div className="flex flex-col items-center justify-center gap-1">
                                 {hasNoScheduleAssigned && !scheduleChangeReq ? (
                                   <span
-                                    className="inline-flex items-center justify-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap"
+                                    className="inline-flex items-center justify-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap"
                                     title="Este empleado no tiene un horario base configurado (distinto de un día libre real)"
                                   >
                                     <UserX className="h-2.5 w-2.5" />
                                     Sin horario
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center justify-center text-[11px] font-mono text-muted-foreground/60 whitespace-nowrap">
+                                  <span className="inline-flex items-center justify-center text-xs font-mono text-muted-foreground/60 whitespace-nowrap">
                                     <Moon className="h-2.5 w-2.5 mr-0.5 opacity-60" />
                                     Libre
                                   </span>
@@ -984,11 +1014,11 @@ export function ShiftCalendarView({
                                   <button
                                     type="button"
                                     onClick={() => handleOpenRequest(vacationReq)}
-                                    className="flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs"
+                                    className="flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-xs bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs"
                                     title="Vacaciones pendientes de aprobación • Clic para ver"
                                   >
                                     <Palmtree className="h-2.5 w-2.5" />
-                                    <span>Vacac. Pend.</span>
+                                    <span className="whitespace-nowrap">Vacac. Pend.</span>
                                   </button>
                                 )}
 
@@ -998,7 +1028,7 @@ export function ShiftCalendarView({
                                     type="button"
                                     onClick={() => handleOpenRequest(scheduleChangeReq)}
                                     className={cn(
-                                      "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
+                                      "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-xs transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
                                       isScheduleChangeApproved
                                         ? "bg-blue-500/15 border border-blue-500/30 text-blue-600 dark:text-blue-400"
                                         : "bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400"
@@ -1006,7 +1036,7 @@ export function ShiftCalendarView({
                                     title={`Cambio de Horario ${isScheduleChangeApproved ? 'Aprobado' : 'Pendiente'}: Día Libre • Clic para ver`}
                                   >
                                     <RefreshCw className="h-2.5 w-2.5" />
-                                    <span>{isScheduleChangeApproved ? 'Cambio Libre' : 'Cambio Pend.'}</span>
+                                    <span className="whitespace-nowrap">{isScheduleChangeApproved ? 'Cambio Libre' : 'Cambio Pend.'}</span>
                                   </button>
                                 )}
 
@@ -1016,7 +1046,7 @@ export function ShiftCalendarView({
                                     type="button"
                                     onClick={() => handleOpenRequest((approvedLeavePermit || pendingLeavePermit)!)}
                                     className={cn(
-                                      "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
+                                      "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-xs transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
                                       approvedLeavePermit
                                         ? "bg-violet-500/15 border border-violet-500/30 text-violet-600 dark:text-violet-400"
                                         : "bg-violet-500/10 border border-violet-500/20 text-violet-500 dark:text-violet-400/80"
@@ -1024,7 +1054,7 @@ export function ShiftCalendarView({
                                     title={`Permiso Laboral ${approvedLeavePermit ? 'Aprobado' : 'Pendiente'} • Clic para ver`}
                                   >
                                     <CalendarOff className="h-2.5 w-2.5" />
-                                    <span>{approvedLeavePermit ? 'Permiso' : 'Permiso Pend.'}</span>
+                                    <span className="whitespace-nowrap">{approvedLeavePermit ? 'Permiso' : 'Permiso Pend.'}</span>
                                   </button>
                                 )}
 
@@ -1034,7 +1064,7 @@ export function ShiftCalendarView({
                                     type="button"
                                     onClick={() => handleOpenRequest(biometricIncident)}
                                     className={cn(
-                                      "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] border transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
+                                      "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-xs border transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
                                       isBiometricPending
                                         ? "bg-rose-500/5 border-dashed border-rose-500/30 text-rose-500/80 dark:text-rose-400/80"
                                         : "bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400"
@@ -1042,7 +1072,7 @@ export function ShiftCalendarView({
                                     title={`Marcación Biométrica ${isBiometricPending ? 'Pendiente de Aprobación' : ''} • Clic para ver`}
                                   >
                                     <Fingerprint className="h-2.5 w-2.5" />
-                                    <span>{isBiometricPending ? 'Marcación Pend.' : 'Marcación'}</span>
+                                    <span className="whitespace-nowrap">{isBiometricPending ? 'Marcación Pend.' : 'Marcación'}</span>
                                   </button>
                                 )}
 
@@ -1052,12 +1082,12 @@ export function ShiftCalendarView({
                                     type="button"
                                     onClick={() => handleOpenRequest(approvedOvertime)}
                                     className={cn(
-                                      "flex items-center gap-1 px-1.5 py-0.5 rounded font-bold text-[10px] transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
+                                      "flex items-center gap-1 px-1.5 py-0.5 rounded font-bold text-xs transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
                                       isApprovedExtraordinary
                                         ? "bg-orange-500/15 border border-orange-500/30 text-orange-600 dark:text-orange-400"
                                         : "bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
                                     )}
-                                    title={`Horas Extras ${isApprovedExtraordinary ? 'Extraordinarias' : 'Suplementarias'} Aprobadas: +${approvedOvertime.hours} hrs (${approvedOvertime.start_time} - ${approvedOvertime.end_time})`}
+                                    title={`Horas Extras ${isApprovedExtraordinary ? 'Extraordinarias' : 'Suplementarias'} Aprobadas: +${approvedOvertime.hours} hrs (${formatTimeHHmm(approvedOvertime.start_time)} - ${formatTimeHHmm(approvedOvertime.end_time)})`}
                                   >
                                     <Clock className="h-2.5 w-2.5" />
                                     <span>+{approvedOvertime.hours}h {isApprovedExtraordinary ? 'Extras' : 'Suple.'}</span>
@@ -1070,7 +1100,7 @@ export function ShiftCalendarView({
                                     type="button"
                                     onClick={() => handleOpenRequest(pendingOvertime)}
                                     className={cn(
-                                      "flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold text-[10px] transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer",
+                                      "flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold text-xs transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer",
                                       isPendingExtraordinary
                                         ? "bg-orange-500/15 border border-orange-500/30 text-orange-600 dark:text-orange-400"
                                         : "bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400"
@@ -1107,7 +1137,7 @@ export function ShiftCalendarView({
                                   : isToday && "text-primary"
                               )}>
                                 <div className={cn(
-                                  "text-[11px] font-mono whitespace-nowrap",
+                                  "text-xs font-mono whitespace-nowrap",
                                   isToday ? "font-bold" : "font-medium",
                                   !(scheduleChangeReq && isScheduleChangeApproved) && !isToday && "text-foreground"
                                 )}>
@@ -1129,7 +1159,7 @@ export function ShiftCalendarView({
                                   type="button"
                                   onClick={() => handleOpenRequest(scheduleChangeReq)}
                                   className={cn(
-                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
+                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-xs transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
                                     isScheduleChangeApproved
                                       ? "bg-blue-500/20 border border-blue-500/40 text-blue-700 dark:text-blue-300"
                                       : "bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400"
@@ -1137,7 +1167,7 @@ export function ShiftCalendarView({
                                   title={`Cambio de Horario ${isScheduleChangeApproved ? 'Aprobado y Vigente' : 'Pendiente de Aprobación'} • Clic para ver`}
                                 >
                                   <RefreshCw className="h-2.5 w-2.5" />
-                                  <span>{isScheduleChangeApproved ? 'Modificado' : 'Cambio Pend.'}</span>
+                                  <span className="whitespace-nowrap">{isScheduleChangeApproved ? 'Modificado' : 'Cambio Pend.'}</span>
                                 </button>
                               )}
 
@@ -1147,7 +1177,7 @@ export function ShiftCalendarView({
                                   type="button"
                                   onClick={() => handleOpenRequest((approvedLeavePermit || pendingLeavePermit)!)}
                                   className={cn(
-                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
+                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-xs transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
                                     approvedLeavePermit
                                       ? "bg-violet-500/15 border border-violet-500/30 text-violet-600 dark:text-violet-400"
                                       : "bg-violet-500/10 border border-violet-500/20 text-violet-500 dark:text-violet-400/80"
@@ -1155,7 +1185,7 @@ export function ShiftCalendarView({
                                   title={`Permiso Laboral ${approvedLeavePermit ? 'Aprobado' : 'Pendiente'} • Clic para ver`}
                                 >
                                   <CalendarOff className="h-2.5 w-2.5" />
-                                  <span>{approvedLeavePermit ? 'Permiso' : 'Permiso Pend.'}</span>
+                                  <span className="whitespace-nowrap">{approvedLeavePermit ? 'Permiso' : 'Permiso Pend.'}</span>
                                 </button>
                               )}
 
@@ -1165,7 +1195,7 @@ export function ShiftCalendarView({
                                   type="button"
                                   onClick={() => handleOpenRequest(biometricIncident)}
                                   className={cn(
-                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] border transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
+                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-xs border transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
                                     isBiometricPending
                                       ? "bg-rose-500/5 border-dashed border-rose-500/30 text-rose-500/80 dark:text-rose-400/80"
                                       : "bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400"
@@ -1173,7 +1203,7 @@ export function ShiftCalendarView({
                                   title={`Marcación Biométrica ${isBiometricPending ? 'Pendiente de Aprobación' : ''} • Clic para ver`}
                                 >
                                   <Fingerprint className="h-2.5 w-2.5" />
-                                  <span>{isBiometricPending ? 'Marcación Pend.' : 'Marcación'}</span>
+                                  <span className="whitespace-nowrap">{isBiometricPending ? 'Marcación Pend.' : 'Marcación'}</span>
                                 </button>
                               )}
 
@@ -1182,11 +1212,11 @@ export function ShiftCalendarView({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenRequest(vacationReq)}
-                                  className="flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] bg-slate-500/15 border border-slate-500/30 text-slate-600 dark:text-slate-300 transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs"
+                                  className="flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-xs bg-slate-500/15 border border-slate-500/30 text-slate-600 dark:text-slate-300 transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs"
                                   title="Vacaciones pendientes de aprobación • Clic para ver"
                                 >
                                   <Palmtree className="h-2.5 w-2.5" />
-                                  <span>Vacac. Pend.</span>
+                                  <span className="whitespace-nowrap">Vacac. Pend.</span>
                                 </button>
                               )}
 
@@ -1196,12 +1226,12 @@ export function ShiftCalendarView({
                                   type="button"
                                   onClick={() => handleOpenRequest(approvedOvertime)}
                                   className={cn(
-                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-[10px] transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
+                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-bold text-xs transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer shadow-2xs",
                                     isApprovedExtraordinary
                                       ? "bg-orange-500/15 border border-orange-500/30 text-orange-600 dark:text-orange-400"
                                       : "bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
                                   )}
-                                  title={`Horas Extras ${isApprovedExtraordinary ? 'Extraordinarias (100%)' : 'Suplementarias (50%)'} Aprobadas: +${approvedOvertime.hours} hrs (${approvedOvertime.start_time} - ${approvedOvertime.end_time}) • Clic para ver solicitud`}
+                                  title={`Horas Extras ${isApprovedExtraordinary ? 'Extraordinarias (100%)' : 'Suplementarias (50%)'} Aprobadas: +${approvedOvertime.hours} hrs (${formatTimeHHmm(approvedOvertime.start_time)} - ${formatTimeHHmm(approvedOvertime.end_time)}) • Clic para ver solicitud`}
                                 >
                                   <Clock className="h-2.5 w-2.5" />
                                   <span>+{approvedOvertime.hours}h {isApprovedExtraordinary ? 'Extras' : 'Suple.'}</span>
@@ -1214,7 +1244,7 @@ export function ShiftCalendarView({
                                   type="button"
                                   onClick={() => handleOpenRequest(pendingOvertime)}
                                   className={cn(
-                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-semibold text-[10px] transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer",
+                                    "flex items-center justify-center gap-1 w-full py-0.5 px-1 rounded font-semibold text-xs transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-95 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer",
                                     isPendingExtraordinary
                                       ? "bg-orange-500/15 border border-orange-500/30 text-orange-600 dark:text-orange-400"
                                       : "bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400"

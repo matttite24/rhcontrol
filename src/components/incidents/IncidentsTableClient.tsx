@@ -162,9 +162,11 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
               return (
                 <TableRow
                   key={inc.id}
+                  onClick={() => handleOpenDetail(inc)}
                   className={cn(
-                    'hover:bg-muted/40 transition-colors text-xs',
-                    isAnulado && 'opacity-50 grayscale-[35%] hover:opacity-70'
+                    'hover:bg-muted/40 transition-colors text-xs cursor-pointer',
+                    // Anuladas: fondo y texto atenuados (sin bajar la opacidad, que restaba contraste al texto)
+                    isAnulado && 'bg-muted/30 text-muted-foreground'
                   )}
                 >
                   {/* 1. Emisión */}
@@ -180,6 +182,7 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
                       <div className="flex items-center gap-3">
                         <Link
                           href={`/employees/${inc.employee.id}`}
+                          onClick={(e) => e.stopPropagation()}
                           title={`Ver expediente de ${inc.employee.full_name}`}
                           aria-label={`Ver expediente de ${inc.employee.full_name}`}
                           className="shrink-0 rounded-full transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer"
@@ -247,7 +250,7 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => handleOpenDetail(inc)}
+                      onClick={(e) => { e.stopPropagation(); handleOpenDetail(inc) }}
                       className="h-8 text-xs text-primary font-medium hover:text-primary hover:bg-primary/10 gap-1 cursor-pointer"
                     >
                       <Eye className="h-3.5 w-3.5" />

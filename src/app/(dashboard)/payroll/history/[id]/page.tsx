@@ -6,7 +6,7 @@ import { PayrollTableView } from '@/components/payroll/PayrollTableView'
 import { fetchCutDeductions } from '@/lib/payroll/cut-deductions'
 import { RefreshPayrollButton } from '@/components/payroll/RefreshPayrollButton'
 import { GeneratePayrollButton } from '@/components/payroll/GeneratePayrollButton'
-import { PayrollHistoryPayoutButtons } from '@/components/payroll/PayrollHistoryPayoutButtons'
+import { PayrollPayoutMenu } from '@/components/payroll/PayrollPayoutMenu'
 import { calculatePayroll } from '@/lib/payroll/calculate'
 import {
   PayrollReport,
@@ -62,6 +62,7 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
       .from('employees')
       .select(`*, salaries:employee_salaries (*), schedules:employee_schedules (*)`)
       .eq('organization_id', currentOrg.id)
+    .neq('status', 'inactivo')
       .order('full_name')
     if (report.department) empQuery = empQuery.eq('department', report.department)
 
@@ -177,10 +178,11 @@ export default async function PayrollReportDetailPage({ params }: PayrollReportD
         }
         action={
           <div className="flex items-center gap-2">
-            <PayrollHistoryPayoutButtons
+            <PayrollPayoutMenu
               calculations={calculations}
               endDate={report.end_date}
               organization={currentOrg}
+              locked={isDraft}
             />
             {isDraft && <RefreshPayrollButton />}
             {isDraft && <GeneratePayrollButton payrollReportId={report.id} />}

@@ -3,6 +3,7 @@
 import { Organization, LeaveRecoverySchedule } from '@/types/employee'
 import { SHIFT_REQUEST_TYPE_OPTIONS } from '@/lib/shifts/constants'
 import { resolveOrgHeaderFields } from '@/lib/print/document-header'
+import { formatTimeHHmm } from '@/lib/shifts/time'
 import {
   formatLongDate,
   openPrintWindow,
@@ -86,7 +87,7 @@ export function printLeavePermissionDocument(data: PrintLeavePermissionData) {
       </tr>
       <tr>
         <td class="key">Horario Autorizado</td>
-        <td>${data.startTime} a ${data.endTime}</td>
+        <td>${formatTimeHHmm(data.startTime)} a ${formatTimeHHmm(data.endTime)}</td>
       </tr>
       <tr>
         <td class="key">Tiempo Solicitado</td>

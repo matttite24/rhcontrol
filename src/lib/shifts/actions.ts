@@ -1293,6 +1293,9 @@ export interface CreateOvertimeRequestParams {
   date: string
   startTime: string
   endTime: string
+  /** Segundo rango horario opcional (doble jornada de horas extras). */
+  startTime2?: string | null
+  endTime2?: string | null
   hours: number
   reason: string
   overtimeType: 'suplementaria_50' | 'extraordinaria_100'
@@ -1331,7 +1334,7 @@ export async function createOvertimeRequestAction(params: CreateOvertimeRequestP
     // etc.) puede dejar dos filas idénticas en shift_requests.
     const { data: existingOvertime } = await supabase
       .from('shift_requests')
-      .select('id, request_type, status, date, start_time, end_time')
+      .select('id, request_type, status, date, start_time, end_time, metadata')
       .eq('organization_id', params.organizationId)
       .eq('employee_id', params.employeeId)
       .eq('request_type', 'horas_extras')
@@ -1339,7 +1342,11 @@ export async function createOvertimeRequestAction(params: CreateOvertimeRequestP
       .in('status', ['pendiente', 'aprobado'])
 
     const hasDuplicateOvertime = (existingOvertime || []).some(
-      (row) => row.start_time === params.startTime && row.end_time === params.endTime
+      (row) =>
+        row.start_time === params.startTime &&
+        row.end_time === params.endTime &&
+        ((row.metadata as any)?.start_time_2 || null) === (params.startTime2 || null) &&
+        ((row.metadata as any)?.end_time_2 || null) === (params.endTime2 || null)
     )
 
     if (hasDuplicateOvertime) {
@@ -1379,6 +1386,8 @@ export async function createOvertimeRequestAction(params: CreateOvertimeRequestP
           overtime_rate: params.overtimeType === 'suplementaria_50' ? 1.5 : 2.0,
           is_holiday: params.isHoliday,
           is_workday: params.isWorkday,
+          start_time_2: params.startTime2 || null,
+          end_time_2: params.endTime2 || null,
           requested_at: new Date().toISOString(),
         },
       })
@@ -1417,6 +1426,9 @@ export interface UpdateOvertimeRequestParams {
   date: string
   startTime: string
   endTime: string
+  /** Segundo rango horario opcional (doble jornada de horas extras). */
+  startTime2?: string | null
+  endTime2?: string | null
   hours: number
   reason: string
   overtimeType: 'suplementaria_50' | 'extraordinaria_100'
@@ -1480,6 +1492,8 @@ export async function updateOvertimeRequestAction(params: UpdateOvertimeRequestP
           overtime_rate: params.overtimeType === 'suplementaria_50' ? 1.5 : 2.0,
           is_holiday: params.isHoliday,
           is_workday: params.isWorkday,
+          start_time_2: params.startTime2 || null,
+          end_time_2: params.endTime2 || null,
         },
       })
       .eq('id', params.requestId)

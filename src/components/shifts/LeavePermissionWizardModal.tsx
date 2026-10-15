@@ -50,6 +50,8 @@ import { EmployeePickerStep } from '@/components/shared/EmployeePickerStep'
 import { pushRecentEmployeeId } from '@/lib/shifts/recent-employees'
 import { normalizeMinuteRange, parseTimeToMinutes, intervalsOverlap } from '@/lib/shifts/time'
 import { cn } from '@/lib/utils'
+import { formatTimeHHmm } from '@/lib/shifts/time'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 function formatIsoDate(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0')
@@ -147,9 +149,9 @@ export function LeavePermissionWizardModal({
 
   // Paso 2: Tiempo
   const [leaveUnit, setLeaveUnit] = useState<LeaveUnit>('dias')
-  const [startDate, setStartDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [startDate, setStartDate] = useState<string>(getEcuadorTodayIso())
   // "Fecha Fin (Retorno)" = día de reincorporación → mínimo inicio + 1.
-  const [endDate, setEndDate] = useState<string>(addDaysISO(new Date().toISOString().split('T')[0], 1))
+  const [endDate, setEndDate] = useState<string>(addDaysISO(getEcuadorTodayIso(), 1))
   const [startTime, setStartTime] = useState('08:00')
   const [endTime, setEndTime] = useState('12:00')
 
@@ -280,7 +282,7 @@ export function LeavePermissionWizardModal({
     }
 
     if (!overlapsShift1 && !overlapsShift2) {
-      return `El tramo ${startTime} - ${endTime} no coincide con el horario laboral del empleado ese día (${activeDaySchedule.start_time_1} - ${activeDaySchedule.end_time_1}${activeDaySchedule.has_split_shift ? ` | ${activeDaySchedule.start_time_2} - ${activeDaySchedule.end_time_2}` : ''}). Revisa si corresponde pedir permiso sobre esas horas.`
+      return `El tramo ${startTime} - ${endTime} no coincide con el horario laboral del empleado ese día (${formatTimeHHmm(activeDaySchedule.start_time_1)} - ${formatTimeHHmm(activeDaySchedule.end_time_1)}${activeDaySchedule.has_split_shift ? ` | ${formatTimeHHmm(activeDaySchedule.start_time_2)} - ${formatTimeHHmm(activeDaySchedule.end_time_2)}` : ''}). Revisa si corresponde pedir permiso sobre esas horas.`
     }
     return null
   }, [leaveUnit, activeDaySchedule, startTime, endTime])
@@ -380,7 +382,7 @@ export function LeavePermissionWizardModal({
     setVacationBalance(EMPTY_BALANCE)
     setUseVacationAdvance(false)
     setLeaveUnit('dias')
-    const today = new Date().toISOString().split('T')[0]
+    const today = getEcuadorTodayIso()
     setStartDate(today)
     setEndDate(addDaysISO(today, 1))
     setStartTime('08:00')
@@ -619,13 +621,13 @@ export function LeavePermissionWizardModal({
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8 ring-1 ring-border shrink-0">
                         <AvatarImage src={selectedEmp.avatar_url ?? undefined} alt={selectedEmp.full_name} />
-                        <AvatarFallback className="text-[10px] font-semibold">
+                        <AvatarFallback className="text-xs font-semibold">
                           {getInitials(selectedEmp.full_name)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex flex-col min-w-0 flex-1">
                         <span className="text-xs font-semibold text-foreground">{selectedEmp.full_name}</span>
-                        <span className="text-[11px] text-muted-foreground truncate">{selectedEmp.position || selectedEmp.department || 'Empleado'}</span>
+                        <span className="text-xs text-muted-foreground truncate">{selectedEmp.position || selectedEmp.department || 'Empleado'}</span>
                       </div>
                     </div>
                   </div>
@@ -722,17 +724,17 @@ export function LeavePermissionWizardModal({
                         <div>
                           {activeDaySchedule ? (
                             activeDaySchedule.is_workday ? (
-                              <span className="font-mono font-semibold text-foreground bg-muted px-2 py-0.5 rounded text-[11px]">
-                                {activeDaySchedule.start_time_1} - {activeDaySchedule.end_time_1}
-                                {activeDaySchedule.has_split_shift && ` | ${activeDaySchedule.start_time_2} - ${activeDaySchedule.end_time_2}`}
+                              <span className="font-mono font-semibold text-foreground bg-muted px-2 py-0.5 rounded text-xs">
+                                {formatTimeHHmm(activeDaySchedule.start_time_1)} - {formatTimeHHmm(activeDaySchedule.end_time_1)}
+                                {activeDaySchedule.has_split_shift && ` | ${formatTimeHHmm(activeDaySchedule.start_time_2)} - ${formatTimeHHmm(activeDaySchedule.end_time_2)}`}
                               </span>
                             ) : (
-                              <Badge variant="outline" className="text-[10px] bg-muted/50 text-muted-foreground font-mono">
+                              <Badge variant="outline" className="text-xs bg-muted/50 text-muted-foreground font-mono">
                                 Día Libre / Descanso
                               </Badge>
                             )
                           ) : (
-                            <span className="text-muted-foreground text-[11px] italic">Sin horario asignado</span>
+                            <span className="text-muted-foreground text-xs italic">Sin horario asignado</span>
                           )}
                         </div>
                       </div>
@@ -758,6 +760,7 @@ export function LeavePermissionWizardModal({
                       <div className="space-y-1.5">
                         <Label className="text-xs font-medium">Hora Desde (Salida) *</Label>
                         <TimePicker
+                          ariaLabel="Hora desde (salida)"
                           value={startTime}
                           onChange={(t) => setStartTime(t)}
                           className="w-full h-9 text-xs justify-start"
@@ -767,6 +770,7 @@ export function LeavePermissionWizardModal({
                       <div className="space-y-1.5">
                         <Label className="text-xs font-medium">Hora Hasta (Retorno) *</Label>
                         <TimePicker
+                          ariaLabel="Hora hasta (retorno)"
                           value={endTime}
                           onChange={(t) => setEndTime(t)}
                           className="w-full h-9 text-xs justify-start"
@@ -832,13 +836,13 @@ export function LeavePermissionWizardModal({
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8 ring-1 ring-border shrink-0">
                         <AvatarImage src={selectedEmp.avatar_url ?? undefined} alt={selectedEmp.full_name} />
-                        <AvatarFallback className="text-[10px] font-semibold">
+                        <AvatarFallback className="text-xs font-semibold">
                           {getInitials(selectedEmp.full_name)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex flex-col min-w-0 flex-1">
                         <span className="text-xs font-semibold text-foreground">{selectedEmp.full_name}</span>
-                        <span className="text-[11px] text-muted-foreground truncate">{selectedEmp.position || selectedEmp.department || 'Empleado'}</span>
+                        <span className="text-xs text-muted-foreground truncate">{selectedEmp.position || selectedEmp.department || 'Empleado'}</span>
                       </div>
                     </div>
                   </div>
@@ -861,7 +865,7 @@ export function LeavePermissionWizardModal({
                       <Palmtree className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       <span className="text-xs font-bold text-foreground">Cargo a vacaciones</span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Se descuenta del saldo de vacaciones anuales acumuladas.
                     </p>
                   </button>
@@ -886,7 +890,7 @@ export function LeavePermissionWizardModal({
                         <DollarSign className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                         <span className="text-xs font-bold text-foreground">Descuento en día de trabajo</span>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Genera deducción salarial en el siguiente rol de pagos.
                       </p>
                     </button>
@@ -903,7 +907,7 @@ export function LeavePermissionWizardModal({
                           onChange={(e) => setRecoveryMethod(e.target.checked ? 'sin_descuento' : 'descuento_dia')}
                           className="h-3.5 w-3.5 rounded border-input text-amber-600 focus:ring-amber-500 cursor-pointer"
                         />
-                        <span className="text-[11px] font-medium text-foreground">
+                        <span className="text-xs font-medium text-foreground">
                           Autorizar la falta sin descuento
                         </span>
                       </label>
@@ -925,7 +929,7 @@ export function LeavePermissionWizardModal({
                       <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       <span className="text-xs font-bold text-foreground">Recuperación con otros días</span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Ingreso de fechas y turnos en que se repondrá el tiempo.
                     </p>
                   </button>
@@ -945,7 +949,7 @@ export function LeavePermissionWizardModal({
                       <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                       <span className="text-xs font-bold text-foreground">Reemplazado por alguien</span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Un compañero cubrirá sus actividades durante la ausencia.
                     </p>
                   </button>
@@ -978,7 +982,7 @@ export function LeavePermissionWizardModal({
                     </div>
                     {!vacationBalance.loading && (
                       <>
-                        <p className="text-[11px] leading-relaxed opacity-80">
+                        <p className="text-xs leading-relaxed opacity-80">
                           {vacationBalance.hasCompletedFirstYear ? (
                             <>
                               Derecho anual: <strong>{vacationBalance.annualLawDays} días</strong>.
@@ -997,7 +1001,7 @@ export function LeavePermissionWizardModal({
                             </>
                           )}
                         </p>
-                        <p className="text-[11px] leading-relaxed opacity-90">
+                        <p className="text-xs leading-relaxed opacity-90">
                           {(leaveUnit === 'horas' ? calculatedHours / 8 : calculatedDays) > effectiveAvailableDays ? (
                             <span className="font-semibold text-destructive">
                               ⚠️ Atención: El permiso requiere {leaveUnit === 'horas' ? `${calculatedHours}h (~${(calculatedHours / 8).toFixed(2)} días)` : `${calculatedDays} día(s)`}, pero el empleado solo tiene {effectiveAvailableDays} día(s) disponibles.
@@ -1029,7 +1033,7 @@ export function LeavePermissionWizardModal({
                           onChange={(e) => setUseVacationAdvance(e.target.checked)}
                           className="h-4 w-4 mt-0.5 rounded border-input cursor-pointer accent-blue-600"
                         />
-                        <div className="text-[11px]">
+                        <div className="text-xs">
                           <span className="font-medium text-foreground">
                             Adelantar días del período vigente ({vacationBalance.currentPeriodLabel})
                           </span>
@@ -1069,7 +1073,7 @@ export function LeavePermissionWizardModal({
                     <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
                     <div className="text-xs">
                       <span className="font-semibold text-foreground">Fechas de reposición pendientes por acordar</span>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         Al momento del permiso aún no se sabe cuándo se repondrá el tiempo. El documento impreso
                         de esta solicitud incluye un espacio en blanco para completar a mano las fechas y horarios
                         acordados una vez definidos con la jefatura.
@@ -1115,9 +1119,9 @@ export function LeavePermissionWizardModal({
                       <h4 className="font-bold text-foreground text-sm uppercase tracking-wide">
                         {organizationName}
                       </h4>
-                      <p className="text-[11px] text-muted-foreground">Solicitud de Permiso Laboral</p>
+                      <p className="text-xs text-muted-foreground">Solicitud de Permiso Laboral</p>
                     </div>
-                    <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                    <Badge variant="outline" className="text-xs uppercase font-mono">
                       Pendiente
                     </Badge>
                   </div>
@@ -1143,7 +1147,7 @@ export function LeavePermissionWizardModal({
                   </div>
 
                   <div className="border-t pt-2 space-y-1">
-                    <span className="text-[11px] text-muted-foreground">Justificación:</span>
+                    <span className="text-xs text-muted-foreground">Justificación:</span>
                     <p className="p-2.5 rounded-lg bg-muted/40 border italic text-foreground leading-relaxed">
                       "{reason}"
                     </p>

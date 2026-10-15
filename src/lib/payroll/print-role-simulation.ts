@@ -2,6 +2,7 @@
 
 import { Organization } from '@/types/employee'
 import { resolveOrgHeaderFields } from '@/lib/print/document-header'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 import {
   DOCUMENT_SHELL_STYLES,
   formatLongDate,
@@ -57,7 +58,7 @@ export interface RoleSimulationPrintData {
 
 export function printRoleSimulationDocument(data: RoleSimulationPrintData): boolean {
   const { orgLegalName, orgTaxId } = resolveOrgHeaderFields(data.organization, data.organizationName)
-  const todayFormatted = formatLongDate(new Date().toISOString().split('T')[0])
+  const todayFormatted = formatLongDate(getEcuadorTodayIso())
   const accentHex = '#059669' // Verde esmeralda corporativo para simulador/nómina
 
   const bonusesRows = data.bonuses.length > 0

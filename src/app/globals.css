@@ -46,6 +46,18 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+  --color-state-warning-bg: var(--state-warning-bg);
+  --color-state-warning-fg: var(--state-warning-fg);
+  --color-state-warning-border: var(--state-warning-border);
+  --color-state-success-bg: var(--state-success-bg);
+  --color-state-success-fg: var(--state-success-fg);
+  --color-state-success-border: var(--state-success-border);
+  --color-state-danger-bg: var(--state-danger-bg);
+  --color-state-danger-fg: var(--state-danger-fg);
+  --color-state-danger-border: var(--state-danger-border);
+  --color-state-neutral-bg: var(--state-neutral-bg);
+  --color-state-neutral-fg: var(--state-neutral-fg);
+  --color-state-neutral-border: var(--state-neutral-border);
 }
 
 :root {
@@ -83,6 +95,20 @@
   --chart-5: oklch(0.60 0.18 300);
   
   --radius: 0.5rem;
+
+  /* Estados semánticos (pendiente, aprobado, rechazado, anulado/neutro) */
+  --state-warning-bg: oklch(0.97 0.03 70);
+  --state-warning-fg: oklch(0.45 0.12 55);
+  --state-warning-border: oklch(0.88 0.07 70);
+  --state-success-bg: oklch(0.97 0.03 160);
+  --state-success-fg: oklch(0.40 0.10 160);
+  --state-success-border: oklch(0.88 0.06 160);
+  --state-danger-bg: oklch(0.97 0.02 20);
+  --state-danger-fg: oklch(0.45 0.16 20);
+  --state-danger-border: oklch(0.88 0.06 20);
+  --state-neutral-bg: oklch(0.96 0.005 245);
+  --state-neutral-fg: oklch(0.42 0.02 245);
+  --state-neutral-border: oklch(0.86 0.01 245);
   
   --sidebar: oklch(0.98 0.005 245);
   --sidebar-foreground: oklch(0.20 0.02 245);
@@ -121,6 +147,21 @@
   --input: oklch(0.26 0.015 250);
   --ring: oklch(0.60 0.20 260);
   
+
+  /* Estados semánticos */
+  --state-warning-bg: oklch(0.26 0.05 60);
+  --state-warning-fg: oklch(0.85 0.10 70);
+  --state-warning-border: oklch(0.40 0.08 60);
+  --state-success-bg: oklch(0.25 0.05 160);
+  --state-success-fg: oklch(0.85 0.10 160);
+  --state-success-border: oklch(0.38 0.07 160);
+  --state-danger-bg: oklch(0.25 0.06 20);
+  --state-danger-fg: oklch(0.86 0.09 20);
+  --state-danger-border: oklch(0.40 0.09 20);
+  --state-neutral-bg: oklch(0.24 0.01 250);
+  --state-neutral-fg: oklch(0.80 0.015 245);
+  --state-neutral-border: oklch(0.36 0.015 250);
+
   --chart-1: oklch(0.60 0.20 260);
   --chart-2: oklch(0.68 0.16 160);
   --chart-3: oklch(0.72 0.16 75);
@@ -146,6 +187,12 @@
   }
   html {
     @apply font-sans;
+  }
+  /* Foco visible en <button> nativos (celdas del calendario, chips, toggles).
+     Los del UI kit llevan data-slot y ya definen su propio anillo. */
+  button:not([data-slot]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 }
 

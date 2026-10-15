@@ -55,6 +55,8 @@ export interface SubHeaderProps {
   clearHref?: string
   /** @deprecated Ya no se usa: los filtros se aplican automáticamente, sin botón de submit. */
   submitLabel?: string
+  /** Contenido al final (lado derecho) de la barra, p.ej. pestañas de estado. */
+  trailing?: React.ReactNode
   /** Elemento o texto para el lado derecho (p.ej. total de registros) */
   counter?: React.ReactNode
   /** Clases adicionales para el contenedor */
@@ -76,6 +78,7 @@ export function SubHeader({
   action,
   search,
   selects,
+  trailing,
   dateRange,
   children,
   hasFilters = false,
@@ -178,15 +181,23 @@ export function SubHeader({
     <div
       className={cn(
         'relative bg-card/75 supports-[backdrop-filter]:backdrop-blur-md px-6 py-3 sticky top-[73px] z-10',
-        "after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-border after:to-transparent",
+        'border-b border-border',
         className
       )}
     >
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 w-full">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5 flex-1 min-w-0">
+        <div
+          className={cn(
+            'flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 min-w-0',
+            // Con pestañas a la derecha, los filtros se quedan en UNA línea (el buscador cede ancho
+            // primero) y, si no caben junto a las pestañas, son las pestañas las que bajan a su
+            // propia línea — en vez de partir los filtros en dos y dejar las pestañas flotando.
+            trailing ? 'sm:flex-nowrap sm:min-w-fit' : 'sm:flex-wrap'
+          )}
+        >
           {/* Buscador opcional — navega con debounce tras dejar de escribir */}
           {search && (
-            <div className={cn('relative w-full sm:max-w-xs', search.className)}>
+            <div className={cn('relative w-full sm:max-w-xs', trailing && 'sm:flex-1 sm:min-w-[130px] sm:max-w-[200px]', search.className)}>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               <Input
                 name={search.name || 'q'}
@@ -210,12 +221,15 @@ export function SubHeader({
                       className={cn(
                         CONTROL_HEIGHT,
                         'flex items-center justify-between gap-2 rounded-lg border border-input bg-background/80 px-3 text-xs text-foreground cursor-pointer hover:bg-background w-full sm:w-auto sm:max-w-[220px]',
+                        // Filtro activo: borde y fondo con el color primario para que se note a simple vista
+                        currentValue && 'border-primary/50 bg-primary/10 font-medium text-primary hover:bg-primary/15',
                         sel.className
                       )}
                     />
                   }
                 >
-                  <span className={cn('truncate', !currentValue && 'text-muted-foreground')}>
+                  <span className={cn('flex items-center gap-1.5 truncate', !currentValue && 'text-muted-foreground')}>
+                    {currentValue && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />}
                     {sel.options.find((opt) => opt.value === currentValue)?.label ||
                       sel.placeholder ||
                       'Seleccionar'}
@@ -268,7 +282,7 @@ export function SubHeader({
               onChange={handleDateRangeChange}
               placeholder={dateRange.placeholder || 'Rango de fechas'}
               className="w-full sm:w-auto sm:max-w-[260px]"
-              triggerClassName={cn(CONTROL_HEIGHT, 'bg-background/80 text-xs')}
+              triggerClassName={cn(CONTROL_HEIGHT, 'bg-background/80 text-xs', (rangeStart || rangeEnd) && 'border-primary/50 bg-primary/10 font-medium text-primary hover:bg-primary/15')}
             />
           )}
 
@@ -279,17 +293,23 @@ export function SubHeader({
           {hasFilters && clearHref && (
             <Link
               href={clearHref}
+              // Con pestañas a la derecha el espacio es justo: el botón se reduce a un icono.
+              title="Limpiar filtros"
+              aria-label="Limpiar filtros"
               className={cn(
                 buttonVariants({ variant: 'ghost' }),
                 CONTROL_HEIGHT,
-                'px-2.5 text-xs text-muted-foreground hover:text-foreground w-full sm:w-auto'
+                'text-xs text-muted-foreground hover:text-foreground w-full sm:w-auto',
+                trailing ? 'sm:w-8 sm:px-0' : 'px-2.5'
               )}
             >
-              <X className="h-3.5 w-3.5 mr-1" />
-              Limpiar
+              <X className={cn('h-3.5 w-3.5', !trailing && 'mr-1')} />
+              <span className={cn(trailing && 'sm:sr-only')}>Limpiar</span>
             </Link>
           )}
         </div>
+
+        {trailing && <div className="shrink-0 min-w-0 overflow-x-auto sm:ml-auto">{trailing}</div>}
 
         {/* Contador o información del lado derecho */}
         {counter && (

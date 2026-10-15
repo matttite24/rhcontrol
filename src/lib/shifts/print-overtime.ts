@@ -3,6 +3,7 @@
 import { Organization } from '@/types/employee'
 import { SHIFT_REQUEST_TYPE_OPTIONS } from '@/lib/shifts/constants'
 import { resolveOrgHeaderFields } from '@/lib/print/document-header'
+import { formatTimeHHmm } from '@/lib/shifts/time'
 import {
   formatLongDate,
   openPrintWindow,
@@ -21,6 +22,8 @@ export interface PrintOvertimeData {
   date: string
   startTime: string
   endTime: string
+  startTime2?: string | null
+  endTime2?: string | null
   hours: number
   reason: string
   status?: string
@@ -58,7 +61,7 @@ export function printOvertimeDocument(data: PrintOvertimeData) {
       </tr>
       <tr>
         <td class="key">Horario Autorizado</td>
-        <td>${data.startTime} a ${data.endTime}</td>
+        <td>${formatTimeHHmm(data.startTime)} a ${formatTimeHHmm(data.endTime)}${formatTimeHHmm(data.startTime2) && formatTimeHHmm(data.endTime2) ? ` y ${formatTimeHHmm(data.startTime2)} a ${formatTimeHHmm(data.endTime2)}` : ''}</td>
       </tr>
       <tr>
         <td class="key">Total de Horas</td>

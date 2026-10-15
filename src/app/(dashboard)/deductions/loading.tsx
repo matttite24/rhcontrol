@@ -1,5 +1,7 @@
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
+import { HeaderDateRange } from '@/components/layout/HeaderDateRange'
+import { StatusTabsSkeleton } from '@/components/ui/status-tabs'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 import { buttonVariants } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
@@ -28,19 +30,21 @@ export default function DeductionsLoading() {
       <PageHeader
         title="Descuentos"
         description="Registro y auditoría de descuentos de caja, inventarios, multas y consumos"
-        showExport
         action={
+          <>
+            <HeaderDateRange placeholder="Fechas" />
           <button type="button" disabled className={cn(buttonVariants({ size: 'sm' }), 'gap-2 font-medium opacity-70')}>
             <Plus className="h-4 w-4" />
             Nuevo Descuento
           </button>
+          </>
         }
       />
 
       <SubHeader
         search={{
           name: 'q',
-          placeholder: 'Buscar por empleado o motivo...',
+          placeholder: 'Empleado o motivo…',
         }}
         selects={[
           {
@@ -48,20 +52,9 @@ export default function DeductionsLoading() {
             placeholder: 'Todos los tipos',
             options: DEDUCTION_TYPE_OPTIONS.map((t) => ({ value: t.type, label: t.title })),
           },
-          {
-            name: 'status',
-            placeholder: 'Todos los estados',
-            options: [
-              { value: 'pendiente', label: 'Pendiente' },
-              { value: 'aplicado', label: 'Aplicado en Rol' },
-              { value: 'anulado', label: 'Anulado' },
-            ],
-          },
         ]}
-        dateRange={{
-          placeholder: 'Rango de fecha del descuento',
-        }}
-        counter="Cargando..."
+        className="bg-muted"
+        trailing={<StatusTabsSkeleton labels={['Todos', 'Pendientes', 'Vigentes', 'En rol', 'Anulados']} />}
       />
 
       <div className="flex-1 w-full overflow-x-auto bg-card">

@@ -11,6 +11,8 @@ export interface Organization {
   address: string | null        // Dirección fiscal / física
   city: string | null           // Ciudad
   country: string | null        // País
+  /** Primer mes (YYYY-MM-01) en que se generan roles mensuales; null = sin restricción. */
+  payroll_start_month?: string | null
   created_at: string
 }
 
@@ -434,6 +436,9 @@ export interface Deduction {
     position: string | null
     avatar_url: string | null
   }
+  /** Calculados en la base (ver add_payroll_monthly_rolls.sql): rol generado en el que ya se descontó, o null. */
+  deduction_roll_id?: string | null
+  deduction_roll_title?: string | null
 }
 
 export type DeductionInsert = Omit<Deduction, 'id' | 'created_at' | 'updated_at' | 'employee'>

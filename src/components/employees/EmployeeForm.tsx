@@ -15,6 +15,7 @@ import { EmployeeRotatingScheduleForm, RotatingScheduleValue } from './EmployeeR
 import { toast } from '@/components/ui/toast'
 import { UserCheck, Building2, DollarSign, Clock, FileCheck2, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 const tabSkeleton = (
   <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -151,7 +152,7 @@ export function EmployeeForm({
   const [rotatingPatterns, setRotatingPatterns] = useState<RotatingShiftPattern[]>(initialRotatingPatterns)
   const [rotatingSchedule, setRotatingSchedule] = useState<RotatingScheduleValue>({
     patternId: initialRotatingSchedule?.pattern_id ?? null,
-    anchorDate: initialRotatingSchedule?.anchor_date ?? new Date().toISOString().slice(0, 10),
+    anchorDate: initialRotatingSchedule?.anchor_date ?? getEcuadorTodayIso(),
   })
 
   // Estado para Conceptos Salariales (Sueldo, Bonificación, Extras)

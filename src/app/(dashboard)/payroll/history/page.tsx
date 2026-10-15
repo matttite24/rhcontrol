@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
+import { HeaderDateRange } from '@/components/layout/HeaderDateRange'
+import { StatusTabs, type StatusTab } from '@/components/ui/status-tabs'
+import { formatDateRangeShort } from '@/lib/shifts/format'
 import {
   Table,
   TableBody,
@@ -52,10 +55,6 @@ export default async function PayrollHistoryPage({ searchParams }: PayrollHistor
     .eq('organization_id', currentOrg.id)
     .order('created_at', { ascending: false })
 
-  if (params.status) {
-    query = query.eq('status', params.status)
-  }
-
   // Rango de fechas: se incluyen reportes cuyo período de corte se solapa
   // con el rango seleccionado (start_date <= date_to y end_date >= date_from)
   if (params.date_to) {
@@ -68,7 +67,9 @@ export default async function PayrollHistoryPage({ searchParams }: PayrollHistor
   const { data: reportsData } = await query
   const rawReports = (reportsData || []) as PayrollReport[]
 
-  const filteredReports = rawReports.filter((item) => {
+  // Búsqueda y fecha acotan el conjunto base; el estado se aplica después en
+  // memoria para poder contar cada pestaña sobre ese mismo conjunto.
+  const baseReports = rawReports.filter((item) => {
     if (!params.q) return true
     const term = params.q.toLowerCase()
     return (
@@ -77,20 +78,55 @@ export default async function PayrollHistoryPage({ searchParams }: PayrollHistor
     )
   })
 
-  const hasFilters = Boolean(params.q || params.status || params.date_from || params.date_to)
+  const statusFilter = params.status ?? 'todos'
+  const filteredReports =
+    statusFilter === 'todos' ? baseReports : baseReports.filter((r) => r.status === statusFilter)
+
+  const countStatus = (status: PayrollReportStatus) => baseReports.filter((r) => r.status === status).length
+
+  const statusTabs: StatusTab[] = [
+    { value: 'todos', label: 'Todos', count: baseReports.length, tone: 'neutral', alwaysShow: true },
+    { value: 'borrador', label: 'Borradores', count: countStatus('borrador'), tone: 'warning' },
+    { value: 'cerrado', label: 'Cortes cerrados', count: countStatus('cerrado'), tone: 'neutral' },
+    { value: 'pagado', label: 'Liquidados', count: countStatus('pagado'), tone: 'success' },
+  ]
+
+  function buildStatusHref(status: string) {
+    const sp = new URLSearchParams()
+    if (params.q) sp.set('q', params.q)
+    if (params.date_from) sp.set('date_from', params.date_from)
+    if (params.date_to) sp.set('date_to', params.date_to)
+    // "Todos" es la vista por defecto: no necesita parámetro.
+    if (status !== 'todos') sp.set('status', status)
+    const qs = sp.toString()
+    return qs ? `/payroll/history?${qs}` : '/payroll/history'
+  }
+
+  const hasFilters = Boolean(params.q || params.date_from || params.date_to)
+  const hasDateRange = Boolean(params.date_from && params.date_to)
 
   return (
     <div className="flex flex-col flex-1 min-h-screen">
       {/* Header con botón para ir al Generador */}
       <PageHeader
-        title="Historial"
-        description="Registro y archivo histórico de cortes y liquidaciones"
-        showExport
+        title={hasDateRange ? `Historial · ${formatDateRangeShort(params.date_from!, params.date_to!)}` : 'Historial'}
+        description={
+          hasDateRange
+            ? `${baseReports.length} ${baseReports.length === 1 ? 'reporte' : 'reportes'} con período de corte en este rango`
+            : 'Registro y archivo histórico de cortes y liquidaciones'
+        }
         action={
-          <Link href="/payroll" className={cn(buttonVariants({ size: 'sm' }), "gap-2")}>
-            <Plus className="h-4 w-4" />
-            Nuevo Corte
-          </Link>
+          <>
+            <HeaderDateRange
+              placeholder="Fechas"
+              defaultFrom={params.date_from}
+              defaultTo={params.date_to}
+            />
+            <Link href="/payroll" className={cn(buttonVariants({ size: 'sm' }), "gap-2")}>
+              <Plus className="h-4 w-4" />
+              Nuevo Corte
+            </Link>
+          </>
         }
       />
 
@@ -99,28 +135,19 @@ export default async function PayrollHistoryPage({ searchParams }: PayrollHistor
         search={{
           name: 'q',
           defaultValue: params.q,
-          placeholder: 'Buscar reporte por título o departamento...',
-        }}
-        selects={[
-          {
-            name: 'status',
-            defaultValue: params.status ?? '',
-            placeholder: 'Todos los estados',
-            options: [
-              { value: 'cerrado', label: 'Corte Cerrado' },
-              { value: 'pagado', label: 'Liquidado / Pagado' },
-              { value: 'borrador', label: 'Borrador' },
-            ],
-          },
-        ]}
-        dateRange={{
-          defaultFrom: params.date_from,
-          defaultTo: params.date_to,
-          placeholder: 'Rango del período de corte',
+          placeholder: 'Título o departamento…',
         }}
         hasFilters={hasFilters}
         clearHref="/payroll/history"
-        counter={`${filteredReports.length} ${filteredReports.length === 1 ? 'reporte guardado' : 'reportes guardados'}`}
+        className="bg-muted"
+        trailing={
+          <StatusTabs
+            ariaLabel="Estado de los reportes"
+            tabs={statusTabs}
+            activeValue={statusFilter}
+            buildHref={buildStatusHref}
+          />
+        }
       />
 
       {/* Tabla de Historial a Ancho Completo */}

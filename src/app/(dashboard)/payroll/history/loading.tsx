@@ -1,5 +1,7 @@
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
+import { HeaderDateRange } from '@/components/layout/HeaderDateRange'
+import { StatusTabsSkeleton } from '@/components/ui/status-tabs'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 
 /**
@@ -13,23 +15,13 @@ export default function PayrollHistoryLoading() {
       <PageHeader
         title="Historial"
         description="Registro y archivo histórico de cortes y liquidaciones"
-        />
+        action={<HeaderDateRange placeholder="Fechas" />}
+      />
 
       <SubHeader
-        search={{ name: 'q', placeholder: 'Buscar reporte por título o departamento...' }}
-        selects={[
-          {
-            name: 'status',
-            placeholder: 'Todos los estados',
-            options: [
-              { value: 'cerrado', label: 'Corte Cerrado' },
-              { value: 'pagado', label: 'Liquidado / Pagado' },
-              { value: 'borrador', label: 'Borrador' },
-            ],
-          },
-        ]}
-        dateRange={{ placeholder: 'Rango del período de corte' }}
-        counter="Cargando..."
+        search={{ name: 'q', placeholder: 'Título o departamento…' }}
+        className="bg-muted"
+        trailing={<StatusTabsSkeleton labels={['Todos', 'Borradores', 'Cortes cerrados', 'Liquidados']} />}
       />
 
       <div className="flex-1 p-6 md:p-8 w-full">

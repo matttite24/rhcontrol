@@ -79,7 +79,7 @@ export function EmployeesTableClient({ employees }: EmployeesTableClientProps) {
                       aria-label={`Ver expediente de ${emp.full_name}`}
                       className="shrink-0 rounded-full transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer"
                     >
-                      <Avatar className="h-9 w-9 ring-1 ring-border">
+                      <Avatar className={`h-9 w-9 ring-2 ${emp.status === 'activo' ? 'ring-emerald-500' : 'ring-border'}`}>
                         <AvatarImage src={emp.avatar_url ?? undefined} alt={emp.full_name} />
                         <AvatarFallback className="text-xs font-semibold">
                           {getInitials(emp.full_name)}

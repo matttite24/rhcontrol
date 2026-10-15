@@ -39,6 +39,7 @@ import { printWarningLetterDocument } from '@/lib/incidents/print-warning'
 import { createWarningIncidentAction } from '@/lib/incidents/actions'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface WarningWizardModalProps {
   organizationId: string
@@ -119,7 +120,7 @@ export function WarningWizardModal({
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null)
 
   // Datos del paso 2
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+  const todayStr = useMemo(() => getEcuadorTodayIso(), [])
   const [incidentDate, setIncidentDate] = useState<string>(todayStr)
   const [severity, setSeverity] = useState<WarningSeverity>('escrito')
   const [selectedClauseId, setSelectedClauseId] = useState<string>(INTERNAL_REGULATION_CLAUSES[0].id)

@@ -13,6 +13,8 @@ interface TimePickerProps {
   readOnly?: boolean
   className?: string
   placeholder?: string
+  /** Nombre accesible del campo (ej. "Hora desde"); se anuncia junto al valor actual. */
+  ariaLabel?: string
 }
 
 export function TimePicker({
@@ -22,6 +24,7 @@ export function TimePicker({
   readOnly = false,
   className,
   placeholder = '--:--',
+  ariaLabel,
 }: TimePickerProps) {
   const [open, setOpen] = React.useState(false)
 
@@ -54,7 +57,7 @@ export function TimePicker({
         )}
       >
         <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-        <span>{value || placeholder}</span>
+        <span>{value ? `${hours}:${minutes}` : placeholder}</span>
       </div>
     )
   }
@@ -63,6 +66,7 @@ export function TimePicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         disabled={disabled}
+        aria-label={ariaLabel ? `${ariaLabel}: ${value ? `${hours}:${minutes}` : placeholder}` : undefined}
         className={cn(
           "inline-flex items-center justify-between gap-1.5 h-8 px-2.5 rounded-lg border border-input bg-card/60 hover:bg-accent/40 text-xs font-mono font-medium text-foreground transition-all shadow-xs outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
           open && "ring-1 ring-ring border-ring",
@@ -71,7 +75,7 @@ export function TimePicker({
       >
         <div className="flex items-center gap-1.5">
           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-          <span>{value || placeholder}</span>
+          <span>{value ? `${hours}:${minutes}` : placeholder}</span>
         </div>
       </PopoverTrigger>
 

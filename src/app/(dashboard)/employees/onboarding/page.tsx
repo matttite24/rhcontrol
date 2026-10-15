@@ -77,6 +77,8 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
   }
   if (params.status) {
     query = query.eq('status', params.status)
+  } else {
+    query = query.neq('status', 'inactivo')
   }
 
   const { data: employeesData } = await query

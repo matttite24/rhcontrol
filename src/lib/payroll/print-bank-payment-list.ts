@@ -7,6 +7,7 @@ import {
   resolveOrgHeaderFields,
 } from '@/lib/print/document-header'
 import { DOCUMENT_SHELL_STYLES, formatLongDate, openPrintWindow } from '@/lib/print/document-shell'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 export interface BankPaymentListRow {
   fullName: string
@@ -38,7 +39,7 @@ export interface BankPaymentListPrintData {
  */
 export function printBankPaymentListDocument(data: BankPaymentListPrintData) {
   const { orgLegalName } = resolveOrgHeaderFields(data.organization, data.organizationName)
-  const issueDateFormatted = formatLongDate(new Date().toISOString().split('T')[0])
+  const issueDateFormatted = formatLongDate(getEcuadorTodayIso())
   const totalAmount = data.rows.reduce((sum, r) => sum + r.amount, 0)
 
   const rowsHtml = data.rows

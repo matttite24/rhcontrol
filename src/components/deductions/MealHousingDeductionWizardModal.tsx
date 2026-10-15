@@ -32,6 +32,7 @@ import {
 import { createRecurringMealHousingDeductionAction } from '@/lib/deductions/actions'
 import { getDeductionCode } from '@/lib/deductions/sequence'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface MealHousingDeductionWizardModalProps {
   organizationId: string
@@ -66,7 +67,7 @@ export function MealHousingDeductionWizardModal({
   const [searchEmp, setSearchEmp] = useState('')
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null)
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = getEcuadorTodayIso()
 
   const [calculationMode, setCalculationMode] = useState<'fijo' | 'por_dias'>('fijo')
   const [amount, setAmount] = useState<string>('')

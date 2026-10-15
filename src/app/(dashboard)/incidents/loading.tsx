@@ -1,5 +1,7 @@
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
+import { HeaderDateRange } from '@/components/layout/HeaderDateRange'
+import { StatusTabsSkeleton } from '@/components/ui/status-tabs'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 import { buttonVariants } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
@@ -27,19 +29,21 @@ export default function IncidentsLoading() {
       <PageHeader
         title="Incidencias"
         description="Registros, solicitudes y documentación del personal"
-        showExport
         action={
+          <>
+            <HeaderDateRange placeholder="Fechas" />
           <button type="button" disabled className={cn(buttonVariants({ size: 'sm' }), 'gap-2 font-medium opacity-70')}>
             <Plus className="h-4 w-4" />
             Nueva Incidencia
           </button>
+          </>
         }
       />
 
       <SubHeader
         search={{
           name: 'q',
-          placeholder: 'Buscar por empleado o motivo...',
+          placeholder: 'Empleado o motivo…',
         }}
         selects={[
           {
@@ -47,22 +51,9 @@ export default function IncidentsLoading() {
             placeholder: 'Todos los tipos',
             options: INCIDENT_TYPE_OPTIONS.map((t) => ({ value: t.type, label: t.title })),
           },
-          {
-            name: 'status',
-            placeholder: 'Todos los estados',
-            options: [
-              { value: 'registrado', label: 'Registrado' },
-              { value: 'aprobado', label: 'Aprobado' },
-              { value: 'pendiente', label: 'Pendiente' },
-              { value: 'rechazado', label: 'Rechazado' },
-              { value: 'anulado', label: 'Anulado' },
-            ],
-          },
         ]}
-        dateRange={{
-          placeholder: 'Rango de fecha del evento',
-        }}
-        counter="Cargando..."
+        className="bg-muted"
+        trailing={<StatusTabsSkeleton labels={['Todas', 'Pendientes', 'Registradas', 'Aprobadas', 'Rechazadas', 'Anuladas']} />}
       />
 
       <div className="flex-1 w-full overflow-x-auto bg-card">

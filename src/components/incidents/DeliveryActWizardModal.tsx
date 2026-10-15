@@ -45,6 +45,7 @@ import { printDeliveryActDocument } from '@/lib/incidents/print-delivery-act'
 import { createDeliveryActIncidentAction } from '@/lib/incidents/actions'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface DeliveryActWizardModalProps {
   organizationId: string
@@ -104,7 +105,7 @@ export function DeliveryActWizardModal({
   // Paso 1: Selección de Empleado y Fecha
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
-  const [deliveryDate, setDeliveryDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [deliveryDate, setDeliveryDate] = useState(() => getEcuadorTodayIso())
   const [deliveredByName, setDeliveredByName] = useState('Talento Humano / Bodega')
   const [deliveredByPosition, setDeliveredByPosition] = useState('Administración de Activos')
 
@@ -145,7 +146,7 @@ export function DeliveryActWizardModal({
       setCurrentStep(1)
       setSelectedEmployee(null)
       setEmployeeSearch('')
-      setDeliveryDate(new Date().toISOString().split('T')[0])
+      setDeliveryDate(getEcuadorTodayIso())
       setItems([
         {
           id: `item-${Date.now()}`,
@@ -448,7 +449,7 @@ export function DeliveryActWizardModal({
                   <DatePicker
                     name="delivery_date"
                     value={deliveryDate}
-                    onChange={(val) => setDeliveryDate(val || new Date().toISOString().split('T')[0])}
+                    onChange={(val) => setDeliveryDate(val || getEcuadorTodayIso())}
                     className="w-full"
                   />
                 </div>

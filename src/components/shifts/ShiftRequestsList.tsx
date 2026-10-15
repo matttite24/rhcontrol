@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { Employee, ShiftRequest, Organization } from '@/types/employee'
@@ -41,6 +41,9 @@ interface ShiftRequestsListProps {
   employees?: Employee[]
   organizationId?: string
   organizationName?: string
+  /** Mensaje del estado vacío (por defecto, el genérico de la sección). */
+  emptyTitle?: string
+  emptyDescription?: string
 }
 
 export function ShiftRequestsList({
@@ -49,6 +52,8 @@ export function ShiftRequestsList({
   employees = [],
   organizationId,
   organizationName,
+  emptyTitle = 'No hay solicitudes de turnos u horas extras',
+  emptyDescription = 'Crea solicitudes de horas extras o cambios de horario para gestionar las autorizaciones de asistencia del personal.',
 }: ShiftRequestsListProps) {
   const router = useRouter()
   const [selectedRequest, setSelectedRequest] = useState<ShiftRequest | null>(null)
@@ -112,6 +117,26 @@ export function ShiftRequestsList({
     setDetailModalOpen(true)
   }
 
+  // Tras aprobar/rechazar desde el detalle, se abre directo la siguiente
+  // solicitud pendiente de la lista (en vez de volver a la tabla y buscarla):
+  // permite resolver una cola de pendientes sin salir del flujo.
+  const nextPendingRef = useRef<ShiftRequest | null>(null)
+
+  function handleStatusChanged(updated: ShiftRequest) {
+    const idx = requests.findIndex((r) => r.id === updated.id)
+    nextPendingRef.current = requests.slice(idx + 1).find((r) => r.status === 'pendiente') ?? null
+  }
+
+  function handleDetailOpenChange(open: boolean) {
+    if (!open && nextPendingRef.current) {
+      const next = nextPendingRef.current
+      nextPendingRef.current = null
+      handleOpenDetail(next)
+      return
+    }
+    setDetailModalOpen(open)
+  }
+
   function handleOpenEdit(req: ShiftRequest) {
     setEditingRequest(req)
     setEditModalOpen(true)
@@ -129,9 +154,9 @@ export function ShiftRequestsList({
           <Clock className="h-6 w-6" />
         </div>
         <div className="space-y-1">
-          <p className="font-medium text-base">No hay solicitudes de turnos u horas extras</p>
+          <p className="font-medium text-base">{emptyTitle}</p>
           <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-            Crea solicitudes de horas extras o cambios de horario para gestionar las autorizaciones de asistencia del personal.
+            {emptyDescription}
           </p>
         </div>
       </div>
@@ -144,10 +169,10 @@ export function ShiftRequestsList({
         <Table className="w-full">
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40 text-xs">
-              <TableHead className="w-[12%] pl-6 font-semibold">Emisión</TableHead>
-              <TableHead className="w-[21%] font-semibold">Empleado</TableHead>
-              <TableHead className="w-[30%] font-semibold">Tipo de Novedad</TableHead>
+              <TableHead className="w-[21%] pl-6 font-semibold">Empleado</TableHead>
+              <TableHead className="w-[30%] font-semibold">Tipo de Solicitud</TableHead>
               <TableHead className="w-[16%] font-semibold">Fecha Autorizada</TableHead>
+              <TableHead className="w-[12%] font-semibold">Emisión</TableHead>
               <TableHead className="w-[14%] font-semibold">Identificador</TableHead>
               <TableHead className="w-[7%] pr-6 text-right font-semibold">Acciones</TableHead>
             </TableRow>
@@ -170,7 +195,8 @@ export function ShiftRequestsList({
       <ShiftRequestDetailModal
         request={selectedRequest}
         open={detailModalOpen}
-        onOpenChange={setDetailModalOpen}
+        onOpenChange={handleDetailOpenChange}
+        onStatusChanged={handleStatusChanged}
         organization={organization}
       />
 

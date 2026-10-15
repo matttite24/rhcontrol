@@ -36,6 +36,7 @@ import { getInitials, formatLongDate } from '@/lib/shifts/format'
 import { EmployeePickerStep } from '@/components/shared/EmployeePickerStep'
 import { pushRecentEmployeeId } from '@/lib/shifts/recent-employees'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface BiometricIncidentTypeOption {
   value: BiometricIncidentType
@@ -94,7 +95,7 @@ export function BiometricIncidentWizardModal({
 
   const [selectedEmpId, setSelectedEmpId] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [incidentDate, setIncidentDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [incidentDate, setIncidentDate] = useState<string>(getEcuadorTodayIso())
   const [incidentType, setIncidentType] = useState<BiometricIncidentType>('sin_marcacion')
   const [reason, setReason] = useState('')
 
@@ -123,7 +124,7 @@ export function BiometricIncidentWizardModal({
     setStep(1)
     setSelectedEmpId('')
     setSearchQuery('')
-    setIncidentDate(new Date().toISOString().split('T')[0])
+    setIncidentDate(getEcuadorTodayIso())
     setIncidentType('sin_marcacion')
     setReason('')
     setCreatedRequest(null)
@@ -308,13 +309,13 @@ export function BiometricIncidentWizardModal({
                   <div className="flex items-center gap-3">
                     <Avatar className="h-8 w-8 ring-1 ring-border shrink-0">
                       <AvatarImage src={selectedEmp.avatar_url ?? undefined} alt={selectedEmp.full_name} />
-                      <AvatarFallback className="text-[10px] font-semibold">
+                      <AvatarFallback className="text-xs font-semibold">
                         {getInitials(selectedEmp.full_name)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col min-w-0 flex-1">
                       <span className="text-xs font-semibold text-foreground">{selectedEmp.full_name}</span>
-                      <span className="text-[11px] text-muted-foreground truncate">
+                      <span className="text-xs text-muted-foreground truncate">
                         {selectedEmp.position || selectedEmp.department || 'Empleado'}
                       </span>
                     </div>
@@ -354,7 +355,7 @@ export function BiometricIncidentWizardModal({
                       <Icon className={cn("h-4 w-4 mt-0.5 shrink-0", isSelected ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground")} />
                       <div className="text-xs">
                         <span className="font-semibold text-foreground">{opt.label}</span>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{opt.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{opt.description}</p>
                       </div>
                     </button>
                   )
@@ -396,9 +397,9 @@ export function BiometricIncidentWizardModal({
                     <h4 className="font-bold text-foreground text-sm uppercase tracking-wide">
                       {organizationName}
                     </h4>
-                    <p className="text-[11px] text-muted-foreground">Marcación Biométrica</p>
+                    <p className="text-xs text-muted-foreground">Marcación Biométrica</p>
                   </div>
-                  <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                  <Badge variant="outline" className="text-xs uppercase font-mono">
                     Informativo
                   </Badge>
                 </div>
@@ -415,7 +416,7 @@ export function BiometricIncidentWizardModal({
                 </div>
 
                 <div className="border-t pt-2 space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Justificación:</span>
+                  <span className="text-xs text-muted-foreground">Justificación:</span>
                   <p className="p-2.5 rounded-lg bg-muted/40 border italic text-foreground leading-relaxed">
                     "{reason}"
                   </p>

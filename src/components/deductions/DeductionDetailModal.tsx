@@ -24,6 +24,8 @@ import { printInventoryDeductionDocument } from '@/lib/deductions/print-inventor
 import { cancelDeductionAction, reactivateRecurringDeductionAction } from '@/lib/deductions/actions'
 import { getDeductionCode } from '@/lib/deductions/sequence'
 import { DEDUCTION_TYPE_OPTIONS } from '@/lib/deductions/constants'
+import { DEDUCTION_DISPLAY_STATUS, resolveDeductionDisplayStatus } from '@/lib/deductions/status'
+import { cn } from '@/lib/utils'
 
 interface DeductionDetailModalProps {
   deduction: Deduction | null
@@ -32,6 +34,8 @@ interface DeductionDetailModalProps {
   onStatusChanged?: (updated: Deduction) => void
   /** Organización activa, ya resuelta server-side. Evita refetchear en cada apertura del modal. */
   organization?: Organization | null
+  /** Título del rol generado en el que ya se descontó (null si aún no). */
+  rollTitle?: string | null
 }
 
 function getInitials(name: string) {
@@ -68,18 +72,13 @@ function formatLongDate(dateStr: string): string {
   return `${dayNum} de ${monthName} de ${year}`
 }
 
-const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
-  pendiente: { label: 'Pendiente', variant: 'outline' },
-  aplicado: { label: 'Aplicado en Rol', variant: 'default' },
-  anulado: { label: 'Anulado', variant: 'destructive' },
-}
-
 export function DeductionDetailModal({
   deduction,
   open,
   onOpenChange,
   onStatusChanged,
   organization: organizationProp,
+  rollTitle = null,
 }: DeductionDetailModalProps) {
   const [cancelLoading, setCancelLoading] = useState(false)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
@@ -127,7 +126,7 @@ export function DeductionDetailModal({
   const isMealHousing = deduction.deduction_type === 'alimentacion' && deduction.is_recurring
   const hasPrintableDocument = isCashShortage || isDisciplinaryFine || isInventory
   const typeMeta = DEDUCTION_TYPE_OPTIONS.find((t) => t.type === deduction.deduction_type)
-  const status = statusConfig[deduction.status] ?? statusConfig.pendiente
+  const status = DEDUCTION_DISPLAY_STATUS[resolveDeductionDisplayStatus(deduction.status, Boolean(rollTitle))]
 
   async function handleCancelDeduction() {
     if (!deduction) return
@@ -255,7 +254,11 @@ export function DeductionDetailModal({
                   <DialogTitle className="text-base font-bold text-foreground truncate">
                     {typeMeta?.title || deduction.title}
                   </DialogTitle>
-                  <Badge variant={status.variant} className="text-[11px] shrink-0">
+                  <Badge
+                    variant="outline"
+                    className={cn('text-[11px] shrink-0 border', status.badgeClass)}
+                    title={rollTitle ? `Descontado en el rol «${rollTitle}»` : undefined}
+                  >
                     {status.label}
                   </Badge>
                 </div>

@@ -33,6 +33,7 @@ import {
 } from '@/lib/employees/print-payroll-discount-authorization'
 import { printResignationLetterDocument } from '@/lib/employees/print-resignation-letter'
 import { printBiweeklyPaymentRequestDocument } from '@/lib/employees/print-biweekly-payment-request'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 import {
   printReserveFundsRequestDocument,
   ReserveFundsModalidad,
@@ -128,7 +129,7 @@ export function EmployeeDocumentsTab({
   // Selección para la solicitud de acumulación/mensualización de décimos
   const [decimosModalidad, setDecimosModalidad] = useState<DecimosModalidad>('acumular')
   const [decimosRubros, setDecimosRubros] = useState<DecimosRubro[]>(['decima_tercera', 'decima_cuarta'])
-  const [decimosIssueDate, setDecimosIssueDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [decimosIssueDate, setDecimosIssueDate] = useState(() => getEcuadorTodayIso())
 
   function toggleDecimosRubro(rubro: DecimosRubro) {
     setDecimosRubros((prev) =>
@@ -154,7 +155,7 @@ export function EmployeeDocumentsTab({
 
   // Selección para la solicitud de acumulación/pago mensual de fondos de reserva
   const [reserveFundsModalidad, setReserveFundsModalidad] = useState<ReserveFundsModalidad>('acumular')
-  const [reserveFundsIssueDate, setReserveFundsIssueDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [reserveFundsIssueDate, setReserveFundsIssueDate] = useState(() => getEcuadorTodayIso())
 
   function handleGenerateReserveFundsRequest() {
     if (!employee) return
@@ -175,7 +176,7 @@ export function EmployeeDocumentsTab({
     { value: 'vivienda', label: 'Vivienda' },
   ]
   const [discountConcepts, setDiscountConcepts] = useState<PayrollDiscountConcept[]>(['consumo'])
-  const [discountIssueDate, setDiscountIssueDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [discountIssueDate, setDiscountIssueDate] = useState(() => getEcuadorTodayIso())
 
   function toggleDiscountConcept(concept: PayrollDiscountConcept) {
     setDiscountConcepts((prev) =>
@@ -199,7 +200,7 @@ export function EmployeeDocumentsTab({
     })
   }
 
-  const [biweeklyIssueDate, setBiweeklyIssueDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [biweeklyIssueDate, setBiweeklyIssueDate] = useState(() => getEcuadorTodayIso())
 
   function handleGenerateBiweeklyPaymentRequest() {
     if (!employee) return
@@ -215,7 +216,7 @@ export function EmployeeDocumentsTab({
   // Datos variables de la carta de renuncia (no forman parte del expediente del empleado)
   const [resignationRecipient, setResignationRecipient] = useState('')
   const [resignationRecipientPosition, setResignationRecipientPosition] = useState('')
-  const [resignationDate, setResignationDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [resignationDate, setResignationDate] = useState(() => getEcuadorTodayIso())
   const [resignationHasDiscount, setResignationHasDiscount] = useState(false)
   const [resignationDiscountDays, setResignationDiscountDays] = useState('')
   const [resignationDiscountStart, setResignationDiscountStart] = useState('')

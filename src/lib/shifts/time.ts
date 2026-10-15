@@ -31,3 +31,14 @@ export function normalizeMinuteRange(startTime: string, endTime: string): { star
   if (end <= start) end += 24 * 60
   return { start, end }
 }
+
+/**
+ * Normaliza una hora a "HH:mm". La base de datos (columnas `time`) puede
+ * devolver "12:00:00" con segundos, y el calendario mostraba ambos formatos
+ * mezclados según cómo se guardó cada horario.
+ */
+export function formatTimeHHmm(t: string | null | undefined): string {
+  if (!t) return ''
+  const [h, m] = t.split(':')
+  return `${(h ?? '').padStart(2, '0')}:${(m ?? '00').padStart(2, '0')}`
+}

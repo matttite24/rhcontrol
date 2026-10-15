@@ -3,6 +3,7 @@
 import { Organization, ScheduleDayChange } from '@/types/employee'
 import { SHIFT_REQUEST_TYPE_OPTIONS } from '@/lib/shifts/constants'
 import { resolveOrgHeaderFields } from '@/lib/print/document-header'
+import { formatTimeHHmm } from '@/lib/shifts/time'
 import {
   formatLongDate,
   openPrintWindow,
@@ -42,9 +43,9 @@ export function printScheduleChangeDocument(data: PrintScheduleChangeData) {
       let newScheduleStr = 'Descanso / Libre'
       if (dc.is_workday) {
         if (dc.has_split_shift) {
-          newScheduleStr = `${dc.start_time_1} a ${dc.end_time_1} y ${dc.start_time_2 || '14:00'} a ${dc.end_time_2 || '18:00'}`
+          newScheduleStr = `${formatTimeHHmm(dc.start_time_1)} a ${formatTimeHHmm(dc.end_time_1)} y ${formatTimeHHmm(dc.start_time_2) || '14:00'} a ${formatTimeHHmm(dc.end_time_2) || '18:00'}`
         } else {
-          newScheduleStr = `${dc.start_time_1} a ${dc.end_time_1}`
+          newScheduleStr = `${formatTimeHHmm(dc.start_time_1)} a ${formatTimeHHmm(dc.end_time_1)}`
         }
       }
       return `

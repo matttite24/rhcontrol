@@ -10,6 +10,7 @@ import { SHIFT_REQUEST_TYPE_OPTIONS, SHIFT_REQUEST_STATUS_MAP } from '@/lib/shif
 import { Eye, Pencil, FileText, CalendarClock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getInitials, formatAuthorizedDates } from '@/lib/shifts/format'
+import { formatTimeHHmm } from '@/lib/shifts/time'
 
 /** Tipos de novedad que hoy soportan edición mientras están 'pendiente'. */
 export const EDITABLE_TYPES = new Set(['horas_extras', 'solicitud_vacaciones'])
@@ -88,12 +89,12 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
   if (resolvedType === 'permiso_laboral') {
     const days = req.metadata?.requested_days || 1
     const unit = req.metadata?.leave_unit === 'horas' ? `${req.hours || 1} hrs` : `${days} día(s)`
-    subtitle = `${unit} (${req.start_time || '08:00'} - ${req.end_time || '17:00'})`
+    subtitle = `${unit} (${formatTimeHHmm(req.start_time) || '08:00'} - ${formatTimeHHmm(req.end_time) || '17:00'})`
   } else if (resolvedType === 'cambio_horario') {
-    subtitle = `${req.start_time || ''}${req.end_time ? ` - ${req.end_time}` : ''}`
+    subtitle = `${formatTimeHHmm(req.start_time) || ''}${formatTimeHHmm(req.end_time) ? ` - ${formatTimeHHmm(req.end_time)}` : ''}`
   } else if (resolvedType === 'horas_extras') {
     const rateLabel = req.metadata?.overtime_type === 'suplementaria_50' ? '50%' : '100%'
-    subtitle = `${req.hours} hrs (${req.start_time || ''} - ${req.end_time || ''}) • ${rateLabel}`
+    subtitle = `${req.hours} hrs (${formatTimeHHmm(req.start_time) || ''} - ${formatTimeHHmm(req.end_time) || ''}) • ${rateLabel}`
   } else if (resolvedType === 'solicitud_vacaciones') {
     const days = req.metadata?.days_count || (req.hours ? Math.round(req.hours / 8) : 1)
     subtitle = `${days} día(s) de descanso legal`
@@ -107,30 +108,27 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
 
   return (
     <TableRow
+      onClick={() => onOpenDetail(req)}
       className={cn(
-        'hover:bg-muted/40 transition-colors text-xs',
+        'hover:bg-muted/40 transition-colors text-xs cursor-pointer',
         // Anuladas: toda la fila en gris para distinguirlas de activas/pendientes
-        isAnnulled && 'bg-muted/30 text-muted-foreground grayscale opacity-60 hover:opacity-100'
+        isAnnulled && 'bg-muted/30 text-muted-foreground [&_td_.font-semibold]:text-muted-foreground'
       )}
     >
-      {/* 1. Emisión */}
-      <TableCell className="pl-6 py-3.5 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
-        <span className={cn("font-medium", !isAnnulled && "text-foreground")}>{formatEmissionDate(req.created_at || req.date)}</span>
-      </TableCell>
-
       {/* 2. Empleado */}
-      <TableCell className="py-3.5">
+      <TableCell className="pl-6 py-3.5">
         {req.employee ? (
           <div className="flex items-center gap-3">
             <Link
               href={`/employees/${req.employee.id}`}
+              onClick={(e) => e.stopPropagation()}
               title={`Ver expediente de ${req.employee.full_name}`}
               aria-label={`Ver expediente de ${req.employee.full_name}`}
               className="shrink-0 rounded-full transition-transform duration-150 ease-out motion-reduce:transition-none active:scale-90 [@media(hover:hover)_and_(pointer:fine)]:hover:scale-105 cursor-pointer"
             >
               <Avatar className="h-8 w-8 ring-1 ring-border">
                 <AvatarImage src={req.employee.avatar_url ?? undefined} alt={req.employee.full_name} />
-                <AvatarFallback className="text-[10px] font-semibold">
+                <AvatarFallback className="text-xs font-semibold">
                   {getInitials(req.employee.full_name)}
                 </AvatarFallback>
               </Avatar>
@@ -139,7 +137,7 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
               <span className="font-semibold text-foreground truncate">
                 {req.employee.full_name}
               </span>
-              <span className="text-[11px] font-mono text-muted-foreground">
+              <span className="text-xs font-mono text-muted-foreground">
                 {req.employee.national_id ?? req.employee.department ?? '—'}
               </span>
             </div>
@@ -156,11 +154,11 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
             <TypeIcon className="h-3.5 w-3.5" />
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="font-medium text-foreground truncate">
+            <span className={cn("font-medium text-foreground truncate", isAnnulled && "line-through text-muted-foreground")}>
               {typeMeta?.title || displayTitle}
             </span>
             {subtitle && (
-              <span className="text-[11px] text-muted-foreground font-mono truncate max-w-sm mt-0.5">
+              <span className="text-xs text-muted-foreground font-mono truncate max-w-sm mt-0.5">
                 {subtitle}
               </span>
             )}
@@ -169,11 +167,16 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
       </TableCell>
 
       {/* Fecha(s) autorizada(s): día al que aplica la novedad, distinto de la emisión */}
-      <TableCell className="py-3.5 font-mono text-[11px] whitespace-nowrap">
+      <TableCell className="py-3.5 text-xs whitespace-nowrap tabular-nums">
         <div className="flex flex-col">
           <span className="text-foreground font-medium">{authorized[0]}</span>
           <span className="text-muted-foreground">{authorized[1]}</span>
         </div>
+      </TableCell>
+
+      {/* 1. Emisión */}
+      <TableCell className="py-3.5 text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+        <span className={cn("font-medium", !isAnnulled && "text-foreground")}>{formatEmissionDate(req.created_at || req.date)}</span>
       </TableCell>
 
       {/* 4. Identificador: Código + Estado, con el aviso de recuperación pendiente debajo */}
@@ -183,14 +186,14 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
             <span className="font-mono text-xs font-semibold text-foreground tracking-tight">
               {documentCode}
             </span>
-            <Badge variant="outline" className={cn("text-[10px] h-5 px-1.5 font-medium border capitalize", statusInfo.badgeClass)}>
+            <Badge variant="outline" className={cn("text-xs h-5 px-1.5 font-medium border capitalize", statusInfo.badgeClass)}>
               {statusInfo.label}
             </Badge>
           </div>
           {pendingRecovery && (
             <Badge
               variant="outline"
-              className="text-[10px] h-5 px-1.5 gap-1 font-medium border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/10 w-fit"
+              className="text-xs h-5 px-1.5 gap-1 font-medium bg-state-warning-bg text-state-warning-fg border-state-warning-border w-fit"
               title="Este permiso aún no tiene fechas de recuperación programadas"
             >
               <CalendarClock className="h-3 w-3" />
@@ -207,7 +210,7 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => onOpenEdit(req)}
+              onClick={(e) => { e.stopPropagation(); onOpenEdit(req) }}
               className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer"
               title="Editar novedad pendiente"
               aria-label="Editar novedad pendiente"
@@ -218,7 +221,7 @@ export function ShiftRequestRow({ request: req, documentCode, onOpenDetail, onOp
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => onOpenDetail(req)}
+            onClick={(e) => { e.stopPropagation(); onOpenDetail(req) }}
             className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10 cursor-pointer"
             title="Ver detalle"
             aria-label="Ver detalle"

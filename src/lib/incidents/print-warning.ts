@@ -3,6 +3,7 @@
 import { Organization } from '@/types/employee'
 import { WarningSeverity, INCIDENT_TYPE_OPTIONS } from './constants'
 import { buildDocumentHeader } from '@/lib/print/document-header'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 import {
   DOCUMENT_SHELL_STYLES,
   openPrintWindow,
@@ -64,7 +65,7 @@ export function printWarningLetterDocument(data: PrintWarningLetterData) {
     : 'MEMORANDO DE AMONESTACIÓN VERBAL (CONSTANCIA)'
   const severityColor = isCanceled ? '#64748b' : isWritten ? '#dc2626' : '#d97706'
 
-  const issueDateFormatted = data.issueDate ? formatLongDate(data.issueDate) : formatLongDate(new Date().toISOString().split('T')[0])
+  const issueDateFormatted = data.issueDate ? formatLongDate(data.issueDate) : formatLongDate(getEcuadorTodayIso())
   const incidentDateFormatted = formatLongDate(data.incidentDate)
 
   // Citas legales exactas según amonestación verbal vs escrita en Ecuador

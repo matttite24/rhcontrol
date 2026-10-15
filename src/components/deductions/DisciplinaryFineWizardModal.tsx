@@ -32,6 +32,7 @@ import { createDisciplinaryFineDeductionAction } from '@/lib/deductions/actions'
 import { getDeductionCode } from '@/lib/deductions/sequence'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 interface DisciplinaryFineWizardModalProps {
   organizationId: string
@@ -87,7 +88,7 @@ export function DisciplinaryFineWizardModal({
   const [employeeSalary, setEmployeeSalary] = useState<number | null>(null)
   const [loadingSalary, setLoadingSalary] = useState(false)
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = getEcuadorTodayIso()
   const [fineDate, setFineDate] = useState<string>(today)
   const [amount, setAmount] = useState<string>('')
   const [regulationArticle, setRegulationArticle] = useState<string>('')
@@ -535,7 +536,7 @@ export function DisciplinaryFineWizardModal({
                 <div className="p-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2">
                   <Info className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
                   <div>
-                    Este descuento no requiere aprobación: quedará registrado como <strong>Aplicado en Rol</strong> de inmediato. Podrá anularse después en caso de corrección.
+                    Este descuento no requiere aprobación: quedará registrado como <strong>Vigente</strong> de inmediato. Podrá anularse después en caso de corrección.
                   </div>
                 </div>
               </div>
@@ -552,7 +553,7 @@ export function DisciplinaryFineWizardModal({
                     Multa Disciplinaria Registrada con Éxito
                   </h3>
                   <p className="text-xs text-muted-foreground mt-1 max-w-md">
-                    La multa quedó registrada con estado <strong>Aplicado en Rol</strong>. Puedes anularla posteriormente desde el detalle si fuese necesario.
+                    La multa quedó registrada con estado <strong>Vigente</strong>. Puedes anularla posteriormente desde el detalle si fuese necesario.
                   </p>
                 </div>
 

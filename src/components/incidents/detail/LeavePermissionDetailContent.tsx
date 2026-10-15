@@ -1,5 +1,6 @@
 import { Incident, LeaveIncidentMetadata } from '@/types/employee'
 import { Palmtree, DollarSign, Clock, Users } from 'lucide-react'
+import { formatTimeHHmm } from '@/lib/shifts/time'
 
 interface LeavePermissionDetailContentProps {
   incident: Incident
@@ -44,7 +45,7 @@ export function LeavePermissionDetailContent({
           <div>
             <span className="text-muted-foreground text-[11px] block">Horario Autorizado:</span>
             <span className="font-mono text-foreground font-bold">
-              {metadata.start_time || '—'} a {metadata.end_time || '—'} ({metadata.requested_hours || 0} hrs)
+              {formatTimeHHmm(metadata.start_time) || '—'} a {formatTimeHHmm(metadata.end_time) || '—'} ({metadata.requested_hours || 0} hrs)
             </span>
           </div>
         ) : null}

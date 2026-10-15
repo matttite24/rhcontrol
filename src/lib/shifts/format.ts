@@ -144,3 +144,30 @@ export function formatDateWeekdayEs(iso: string): string {
   const wd = WEEKDAYS_ES[new Date(y, m - 1, d).getDay()].slice(0, 3)
   return `${wd}, ${String(d).padStart(2, '0')} de ${MONTHS_FULL_ES[m - 1]} - ${y}`
 }
+
+const MONTH_NAMES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+function parseIsoParts(iso: string): { y: number; m: number; d: number } | null {
+  const [y, m, d] = iso.split('-').map(Number)
+  return y && m && d ? { y, m, d } : null
+}
+
+/** "5 de octubre de 2026" (sin día de la semana). */
+export function formatDateLongEs(iso: string): string {
+  const p = parseIsoParts(iso)
+  return p ? `${p.d} de ${MONTH_NAMES_ES[p.m - 1]} de ${p.y}` : iso
+}
+
+/**
+ * Rango compacto para títulos: "5 – 15 oct 2026" (mismo mes), "28 sep – 3 oct 2026"
+ * (mismo año) o "28 dic 2025 – 3 ene 2026" (años distintos).
+ */
+export function formatDateRangeShort(fromIso: string, toIso: string): string {
+  const a = parseIsoParts(fromIso)
+  const b = parseIsoParts(toIso)
+  if (!a || !b) return `${fromIso} – ${toIso}`
+  const mon = (m: number) => MONTH_NAMES_ES[m - 1].slice(0, 3)
+  if (a.y === b.y && a.m === b.m) return `${a.d} – ${b.d} ${mon(b.m)} ${b.y}`
+  if (a.y === b.y) return `${a.d} ${mon(a.m)} – ${b.d} ${mon(b.m)} ${b.y}`
+  return `${a.d} ${mon(a.m)} ${a.y} – ${b.d} ${mon(b.m)} ${b.y}`
+}

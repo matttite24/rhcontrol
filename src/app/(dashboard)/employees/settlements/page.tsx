@@ -60,6 +60,7 @@ export default async function SettlementsPage({ searchParams }: SettlementsPageP
     .from('employees')
     .select('*, salaries:employee_salaries(*)')
     .eq('organization_id', currentOrg.id)
+    .neq('status', 'inactivo')
     .order('full_name')
 
   const employees = (empData || []) as (Employee & { salaries?: EmployeeSalary[] })[]

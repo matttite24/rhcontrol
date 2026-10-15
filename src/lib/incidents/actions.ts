@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Incident } from '@/types/employee'
 import { revalidatePath } from 'next/cache'
 import { getNextIncidentSequenceCode } from './sequence'
+import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
 
 export interface CreateWarningIncidentParams {
   organizationId: string
@@ -41,7 +42,7 @@ export async function createWarningIncidentAction(params: CreateWarningIncidentP
       'llamado_atencion'
     )
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getEcuadorTodayIso()
     const severityLabel = params.severity === 'escrito' ? 'Escrito' : 'Verbal'
     const fullTitle = `[${code}] Llamado de atención (${severityLabel}): ${params.infractionTitle}`
 
@@ -224,7 +225,7 @@ export async function createNonCompliantIncidentAction(params: CreateNonComplian
       'actividad_no_conforme'
     )
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getEcuadorTodayIso()
     const fullTitle = `[${code}] Actividad No Conforme: ${params.categoryTitle}`
 
     const combinedMetadata = {
@@ -424,7 +425,7 @@ export async function createSalaryAdvanceAction(params: CreateSalaryAdvanceParam
       })
     }
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getEcuadorTodayIso()
     const modalityLabel =
       count === 1
         ? `1 cuota de $${params.totalAmount.toFixed(2)} (${params.startMonth}/${params.startYear})`
@@ -692,7 +693,7 @@ export async function createDeliveryActIncidentAction(
       'acta_entrega'
     )
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getEcuadorTodayIso()
     const fullTitle = `[${code}] Acta Entrega-Recepción de Bienes (${totalItemsCount} ${totalItemsCount === 1 ? 'ítem' : 'ítems'})`
 
     const combinedMetadata = {
@@ -837,7 +838,7 @@ export async function createWorkCertificateAction(
       'certificado_trabajo'
     )
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getEcuadorTodayIso()
     const fullTitle = `[${code}] Certificado de Trabajo`
 
     const combinedMetadata = {
