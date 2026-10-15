@@ -49,7 +49,7 @@ export default function IncidentsLoading() {
           {
             name: 'type',
             placeholder: 'Todos los tipos',
-            options: INCIDENT_TYPE_OPTIONS.map((t) => ({ value: t.type, label: t.title })),
+            options: INCIDENT_TYPE_OPTIONS.filter((t) => t.type !== 'solicitud_vacaciones').map((t) => ({ value: t.type, label: t.title })),
           },
         ]}
         className="bg-muted"

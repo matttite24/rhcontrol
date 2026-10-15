@@ -23,10 +23,26 @@ export default function ShiftCalendarLoading() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-md bg-muted" />
-            <div className="h-8 w-52 rounded-lg bg-muted" />
-            <div className="h-8 w-20 rounded-md bg-muted" />
-            <div className="h-8 w-8 rounded-md bg-muted" />
+            {/* Navegación: ir a fecha · anterior · hoy · siguiente */}
+            <div className="flex items-center gap-1">
+              <div className="h-8 w-8 rounded-md bg-muted" />
+              <div className="h-8 w-8 rounded-md bg-muted" />
+              <div className="h-8 w-12 rounded-md bg-muted" />
+              <div className="h-8 w-8 rounded-md bg-muted" />
+            </div>
+            <div className="h-6 w-px bg-border" />
+            {/* Vista: rango de días + Dividir */}
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-52 rounded-lg bg-muted" />
+              <div className="h-8 w-20 rounded-md bg-muted" />
+            </div>
+            <div className="h-6 w-px bg-border" />
+            {/* Utilidades: actualizar + leyenda */}
+            <div className="flex items-center gap-1">
+              <div className="h-8 w-8 rounded-md bg-muted" />
+              <div className="h-8 w-8 rounded-md bg-muted" />
+            </div>
+            <div className="h-6 w-px bg-border" />
             <div className="h-8 w-24 rounded-md bg-primary/30" />
           </div>
         </div>

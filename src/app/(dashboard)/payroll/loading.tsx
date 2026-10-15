@@ -1,5 +1,6 @@
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
+import { PayrollMonthPicker } from '@/components/payroll/PayrollMonthPicker'
 import { buttonVariants } from '@/components/ui/button'
 import { Save } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -19,14 +20,17 @@ export default function PayrollLoading() {
         title="Generar Rol"
         description="Cálculo y consolidación general de haberes, horas extras y deducciones"
         action={
-          <button
-            type="button"
-            disabled
-            className={cn(buttonVariants({ size: 'sm' }), 'gap-2 font-medium opacity-70')}
-          >
-            <Save className="h-4 w-4" />
-            Guardar Reporte
-          </button>
+          <div className="flex items-center gap-2">
+            <PayrollMonthPicker startDate="" endDate="" />
+            <button
+              type="button"
+              disabled
+              className={cn(buttonVariants({ size: 'sm' }), 'gap-2 font-medium opacity-70')}
+            >
+              <Save className="h-4 w-4" />
+              Guardar Borrador
+            </button>
+          </div>
         }
       />
 
@@ -35,8 +39,6 @@ export default function PayrollLoading() {
         selects={[
           { name: 'department', placeholder: 'Todos los departamentos', options: [] },
         ]}
-        dateRange={{ placeholder: 'Rango del período de corte' }}
-        submitLabel="Actualizar"
         counter="Cargando..."
       />
 

@@ -2,6 +2,9 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
 import { HeaderDateRange } from '@/components/layout/HeaderDateRange'
 import { StatusTabsSkeleton } from '@/components/ui/status-tabs'
+import { buttonVariants } from '@/components/ui/button'
+import { Plus } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 
 /**
@@ -15,7 +18,15 @@ export default function PayrollHistoryLoading() {
       <PageHeader
         title="Historial"
         description="Registro y archivo histórico de cortes y liquidaciones"
-        action={<HeaderDateRange placeholder="Fechas" />}
+        action={
+          <>
+            <HeaderDateRange placeholder="Fechas" />
+            <button type="button" disabled className={cn(buttonVariants({ size: 'sm' }), 'gap-2 font-medium opacity-70')}>
+              <Plus className="h-4 w-4" />
+              Nuevo Corte
+            </button>
+          </>
+        }
       />
 
       <SubHeader
