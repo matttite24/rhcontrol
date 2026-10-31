@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { fetchEmployeePickerList, findMatchingEmployeeIds } from '@/lib/employees/picker'
+import { ReportsMenu } from '@/components/reports/ReportsMenu'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
@@ -55,29 +57,13 @@ export default async function ShiftRequestsPage({ searchParams }: ShiftRequestsP
 
   // Obtener empleados de la organización (para el asistente modal, y para
   // resolver la búsqueda `q` por nombre/cédula antes de filtrar solicitudes).
-  const { data: employeesData } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('organization_id', currentOrg.id)
-    .neq('status', 'inactivo')
-    .order('full_name')
-
-  const employees = employeesData || []
 
   // La búsqueda `q` matchea por título O por nombre/cédula del empleado
   // (tabla relacionada, no filtrable directo con .or()) — se resuelve primero
   // qué empleados matchean el término, igual que en /incidents y /deductions.
-  let matchingEmployeeIds: string[] | null = null
-  if (params.q) {
-    const term = params.q.toLowerCase()
-    matchingEmployeeIds = employees
-      .filter(
-        (e) =>
-          e.full_name?.toLowerCase().includes(term) ||
-          e.national_id?.toLowerCase().includes(term)
-      )
-      .map((e) => e.id)
-  }
+  const matchingEmployeeIds: string[] | null = params.q
+    ? await findMatchingEmployeeIds(supabase, currentOrg.id, params.q, { excludeInactive: true })
+    : null
   const qIdsFilter = (matchingEmployeeIds ?? []).length > 0
     ? `,employee_id.in.(${matchingEmployeeIds!.join(',')})`
     : ''
@@ -146,6 +132,7 @@ export default async function ShiftRequestsPage({ searchParams }: ShiftRequestsP
   }
 
   const [
+    { data: employees },
     { data: requestsData, count },
     { count: pendingCount },
     { count: approvedCount },
@@ -153,6 +140,7 @@ export default async function ShiftRequestsPage({ searchParams }: ShiftRequestsP
     { count: annulledCount },
     { count: allCount },
   ] = await Promise.all([
+    fetchEmployeePickerList(supabase, currentOrg.id, { excludeInactive: true }),
     query,
     countFor('pendiente'),
     countFor('aprobado'),
@@ -213,6 +201,7 @@ export default async function ShiftRequestsPage({ searchParams }: ShiftRequestsP
         }
         action={
           <>
+            <ReportsMenu />
             <HeaderDateRange
               placeholder="Fechas"
               defaultFrom={params.date_from}
@@ -256,7 +245,7 @@ export default async function ShiftRequestsPage({ searchParams }: ShiftRequestsP
       />
 
       {/* Listado de Novedades a Ancho Completo */}
-      <div className="flex-1 w-full overflow-x-auto bg-card">
+      <div data-pending-dim className="flex-1 w-full overflow-x-auto bg-card">
         <ShiftRequestsList
           requests={shiftRequests}
           organization={currentOrg}
