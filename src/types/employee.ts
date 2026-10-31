@@ -265,8 +265,16 @@ export type LeaveRecoveryMethod =
 
 export interface LeaveRecoverySchedule {
   date: string
+  /** Primera franja (ej. entrada y salida a almuerzo). */
   start_time: string
   end_time: string
+  /**
+   * Segunda franja opcional (ej. regreso de almuerzo y salida): una jornada
+   * normal tiene 4 marcaciones, es decir 2 franjas.
+   */
+  start_time_2?: string
+  end_time_2?: string
+  /** Total de horas de las franjas registradas. */
   hours: number
 }
 

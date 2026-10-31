@@ -54,7 +54,7 @@ import { getInitials, formatLongDate } from '@/lib/shifts/format'
 import { cn } from '@/lib/utils'
 import { useClosedPayrollLock } from '@/hooks/use-closed-payroll-lock'
 import { ClosedPayrollLockNotice } from '@/components/shared/ClosedPayrollLockNotice'
-import { formatTimeHHmm } from '@/lib/shifts/time'
+import { formatTimeHHmm, recoveryRanges, recoveryHours } from '@/lib/shifts/time'
 
 const DAYS_OF_WEEK_MAP: Record<number, DayOfWeek> = {
   0: 'Domingo',
@@ -342,7 +342,7 @@ export function ShiftRequestDetailModal({
       setRecoveryRows(metadata.recovery_schedules.map((r) => ({ ...r, _key: nextRecoveryRowKey.current++ })))
     } else {
       setRecoveryRows(
-        Array.from({ length: target }, () => ({ date: '', start_time: '', end_time: '', hours: 0, _key: nextRecoveryRowKey.current++ }))
+        Array.from({ length: target }, () => ({ date: '', start_time: '', end_time: '', start_time_2: '', end_time_2: '', hours: 0, _key: nextRecoveryRowKey.current++ }))
       )
     }
     setShowRecoveryForm(true)
@@ -359,7 +359,7 @@ export function ShiftRequestDetailModal({
   }
 
   function addRecoveryRow() {
-    setRecoveryRows((rows) => [...rows, { date: '', start_time: '', end_time: '', hours: 0, _key: nextRecoveryRowKey.current++ }])
+    setRecoveryRows((rows) => [...rows, { date: '', start_time: '', end_time: '', start_time_2: '', end_time_2: '', hours: 0, _key: nextRecoveryRowKey.current++ }])
   }
 
   function removeRecoveryRow(index: number) {
@@ -368,9 +368,32 @@ export function ShiftRequestDetailModal({
 
   async function handleSaveRecovery() {
     if (!request) return
-    const validRows: LeaveRecoverySchedule[] = recoveryRows
-      .filter((r) => r.date)
-      .map(({ _key, ...row }) => row)
+    const filledRows = recoveryRows.filter((r) => r.date)
+    // Cada franja debe venir completa (inicio y fin) o vacía; la 1.ª es obligatoria.
+    for (const [i, r] of filledRows.entries()) {
+      if (!r.start_time || !r.end_time) {
+        toast.error(`Turno ${i + 1}: completa la hora de inicio y fin de la primera franja.`)
+        return
+      }
+      if (!!r.start_time_2 !== !!r.end_time_2) {
+        toast.error(`Turno ${i + 1}: la segunda franja necesita hora de inicio y de fin (o déjala vacía).`)
+        return
+      }
+    }
+    const validRows: LeaveRecoverySchedule[] = filledRows.map(({ _key, ...row }) => {
+      const clean: LeaveRecoverySchedule = {
+        date: row.date,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        hours: 0,
+      }
+      if (row.start_time_2 && row.end_time_2) {
+        clean.start_time_2 = row.start_time_2
+        clean.end_time_2 = row.end_time_2
+      }
+      clean.hours = recoveryHours(clean)
+      return clean
+    })
     if (validRows.length === 0) {
       toast.error('Agrega al menos una fecha de recuperación.')
       return
@@ -750,8 +773,10 @@ export function ShiftRequestDetailModal({
                         {request.metadata.recovery_schedules.map((rs: LeaveRecoverySchedule, idx: number) => (
                           <div key={`${rs.date}-${idx}`} className="flex items-center justify-between text-xs py-1 border-b border-border/40 last:border-0">
                             <span className="font-semibold text-foreground">{formatLongDate(rs.date)}:</span>
-                            <span className="font-mono text-violet-600 dark:text-violet-400 font-medium">
-                              {formatTimeHHmm(rs.start_time) && formatTimeHHmm(rs.end_time) ? `${formatTimeHHmm(rs.start_time)} a ${formatTimeHHmm(rs.end_time)}` : `${rs.hours || 0} horas`}
+                            <span className="font-mono text-violet-600 dark:text-violet-400 font-medium text-right">
+                              {recoveryRanges(rs).length > 0
+                                ? `${recoveryRanges(rs).map((r) => `${formatTimeHHmm(r.start)} a ${formatTimeHHmm(r.end)}`).join(' y ')} (${recoveryHours(rs)} h)`
+                                : `${rs.hours || 0} horas`}
                             </span>
                           </div>
                         ))}
@@ -1206,21 +1231,18 @@ export function ShiftRequestDetailModal({
                     className="h-9 text-xs"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Hora inicio</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Franja 1 (ej. entrada y salida a almuerzo)</Label>
+                  <div className="grid grid-cols-2 gap-3">
                     <TimePicker
-                      ariaLabel="Hora de inicio del turno"
+                      ariaLabel="Hora de inicio de la primera franja"
                       value={row.start_time || ''}
                       onChange={(v) => updateRecoveryRow(idx, 'start_time', v)}
                       placeholder="Hora inicio"
                       className="h-9 w-full justify-start"
                     />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Hora fin</Label>
                     <TimePicker
-                      ariaLabel="Hora de fin del turno"
+                      ariaLabel="Hora de fin de la primera franja"
                       value={row.end_time || ''}
                       onChange={(v) => updateRecoveryRow(idx, 'end_time', v)}
                       placeholder="Hora fin"
@@ -1228,6 +1250,30 @@ export function ShiftRequestDetailModal({
                     />
                   </div>
                 </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Franja 2 (opcional — regreso de almuerzo y salida)</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <TimePicker
+                      ariaLabel="Hora de inicio de la segunda franja"
+                      value={row.start_time_2 || ''}
+                      onChange={(v) => updateRecoveryRow(idx, 'start_time_2', v)}
+                      placeholder="Hora inicio"
+                      className="h-9 w-full justify-start"
+                    />
+                    <TimePicker
+                      ariaLabel="Hora de fin de la segunda franja"
+                      value={row.end_time_2 || ''}
+                      onChange={(v) => updateRecoveryRow(idx, 'end_time_2', v)}
+                      placeholder="Hora fin"
+                      className="h-9 w-full justify-start"
+                    />
+                  </div>
+                </div>
+                {recoveryHours(row) > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Total del turno: <strong className="text-foreground font-semibold tabular-nums">{recoveryHours(row)} h</strong>
+                  </p>
+                )}
               </div>
             ))}
 

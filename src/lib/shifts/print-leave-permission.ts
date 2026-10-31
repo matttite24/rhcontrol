@@ -3,7 +3,7 @@
 import { Organization, LeaveRecoverySchedule } from '@/types/employee'
 import { SHIFT_REQUEST_TYPE_OPTIONS } from '@/lib/shifts/constants'
 import { resolveOrgHeaderFields } from '@/lib/print/document-header'
-import { formatTimeHHmm } from '@/lib/shifts/time'
+import { formatTimeHHmm, recoveryRanges, recoveryHours } from '@/lib/shifts/time'
 import {
   formatLongDate,
   openPrintWindow,
@@ -61,7 +61,9 @@ export function printLeavePermissionDocument(data: PrintLeavePermissionData) {
     recoveryNote = 'El compañero indicado cubrirá las funciones durante la ausencia.'
   } else if (data.recoveryMethod === 'recuperacion_dias') {
     recoveryLabel = 'Reposición de Horas acordadas'
-    recoveryNote = 'El colaborador compensará el tiempo en jornadas posteriores convenidas con su jefatura.'
+    recoveryNote = (data.recoverySchedules ?? []).some((rs) => rs.date)
+      ? 'El colaborador compensará el tiempo en las jornadas programadas que se detallan a continuación.'
+      : 'El colaborador compensará el tiempo en jornadas posteriores convenidas con su jefatura.'
   }
 
   const isDays = data.leaveUnit === 'dias'
@@ -95,6 +97,58 @@ export function printLeavePermissionDocument(data: PrintLeavePermissionData) {
       </tr>
     `
 
+  const scheduled = (data.recoverySchedules ?? []).filter((rs) => rs.date)
+  let recoveryBlockHtml = ''
+  if (data.recoveryMethod === 'recuperacion_dias') {
+    if (scheduled.length > 0) {
+      const sorted = [...scheduled].sort((a, b) => a.date.localeCompare(b.date))
+      const fmtRange = (r?: { start: string; end: string }) =>
+        r ? `${formatTimeHHmm(r.start)} a ${formatTimeHHmm(r.end)}` : '—'
+      const rows = sorted
+        .map((rs) => {
+          const ranges = recoveryRanges(rs)
+          return `
+      <tr>
+        <td>${formatLongDate(rs.date)}</td>
+        <td>${fmtRange(ranges[0])}</td>
+        <td>${fmtRange(ranges[1])}</td>
+        <td style="text-align:right;">${recoveryHours(rs)} h</td>
+      </tr>`
+        })
+        .join('')
+      const totalHours = Math.round(sorted.reduce((sum, rs) => sum + recoveryHours(rs), 0) * 100) / 100
+      const toRecover = isDays
+        ? `${data.daysCount ?? sorted.length} día(s)`
+        : `${data.hoursCount ?? 0} hora(s)`
+      recoveryBlockHtml = `
+    <div class="section-heading">Detalle de la Recuperación Programada</div>
+    <table class="data-table" style="margin-top:6px;">
+      <tr>
+        <th>Fecha</th>
+        <th>Franja 1</th>
+        <th>Franja 2</th>
+        <th style="text-align:right;">Horas</th>
+      </tr>${rows}
+      <tr>
+        <td colspan="3" style="text-align:right;font-weight:700;">Total programado a recuperar (${toRecover} de permiso)</td>
+        <td style="text-align:right;font-weight:700;">${totalHours} h</td>
+      </tr>
+    </table>`
+    } else {
+      recoveryBlockHtml = `
+    <table class="data-table" style="margin-top:14px;">
+      <tr>
+        <td class="key">Fecha(s) de Reposición Acordada(s)</td>
+        <td style="height:32px;">&nbsp;</td>
+      </tr>
+      <tr>
+        <td class="key">Horario(s) de Reposición</td>
+        <td style="height:32px;">&nbsp;</td>
+      </tr>
+    </table>`
+    }
+  }
+
   const bodyHtml = `
     <p class="body-text">
       Por medio del presente documento, el/la colaborador/a <strong>${data.employeeName}</strong>,
@@ -117,22 +171,7 @@ export function printLeavePermissionDocument(data: PrintLeavePermissionData) {
       ${recoveryNote}
     </div>
 
-    ${
-      data.recoveryMethod === 'recuperacion_dias'
-        ? `
-    <table class="data-table" style="margin-top:14px;">
-      <tr>
-        <td class="key">Fecha(s) de Reposición Acordada(s)</td>
-        <td style="height:32px;">&nbsp;</td>
-      </tr>
-      <tr>
-        <td class="key">Horario(s) de Reposición</td>
-        <td style="height:32px;">&nbsp;</td>
-      </tr>
-    </table>
-    `
-        : ''
-    }
+    ${recoveryBlockHtml}
 
     <p class="body-text" style="margin-top:22px;">
       El presente documento se hace efectivo mediante la firma de la jefatura inmediata, que autoriza

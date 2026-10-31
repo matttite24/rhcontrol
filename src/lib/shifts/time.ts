@@ -42,3 +42,30 @@ export function formatTimeHHmm(t: string | null | undefined): string {
   const [h, m] = t.split(':')
   return `${(h ?? '').padStart(2, '0')}:${(m ?? '00').padStart(2, '0')}`
 }
+
+/** Horas (decimal, 2 cifras) entre dos "HH:mm"; 0 si falta alguno. Soporta cruce de medianoche. */
+export function hoursBetween(startTime?: string | null, endTime?: string | null): number {
+  if (!startTime || !endTime) return 0
+  const { start, end } = normalizeMinuteRange(startTime, endTime)
+  return Math.round(((end - start) / 60) * 100) / 100
+}
+
+/** Franjas (inicio, fin) con datos de un turno de recuperación, en orden. */
+export function recoveryRanges(rs: {
+  start_time?: string | null
+  end_time?: string | null
+  start_time_2?: string | null
+  end_time_2?: string | null
+}): { start: string; end: string }[] {
+  const out: { start: string; end: string }[] = []
+  if (rs.start_time && rs.end_time) out.push({ start: rs.start_time, end: rs.end_time })
+  if (rs.start_time_2 && rs.end_time_2) out.push({ start: rs.start_time_2, end: rs.end_time_2 })
+  return out
+}
+
+/** Total de horas de un turno de recuperación (suma de sus franjas). */
+export function recoveryHours(rs: Parameters<typeof recoveryRanges>[0] & { hours?: number }): number {
+  const ranges = recoveryRanges(rs)
+  if (ranges.length === 0) return rs.hours || 0
+  return Math.round(ranges.reduce((sum, r) => sum + hoursBetween(r.start, r.end), 0) * 100) / 100
+}
