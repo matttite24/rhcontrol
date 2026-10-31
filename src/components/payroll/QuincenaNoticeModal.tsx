@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useRef, useState, useCallback } from 'react'
-import { toPng } from 'html-to-image'
 import {
   Dialog,
   DialogContent,
@@ -46,6 +45,7 @@ export function QuincenaNoticeModal({
     if (!bannerRef.current) return
     try {
       setGenerating(true)
+      const { toPng } = await import('html-to-image')
       const dataUrl = await toPng(bannerRef.current, { cacheBust: true, pixelRatio: 2 })
       const link = document.createElement('a')
       link.download = `quincena_${monthName.toLowerCase()}_${year}_whatsapp.png`
@@ -62,6 +62,7 @@ export function QuincenaNoticeModal({
     if (!bannerRef.current) return
     try {
       setGenerating(true)
+      const { toPng } = await import('html-to-image')
       const dataUrl = await toPng(bannerRef.current, { cacheBust: true, pixelRatio: 2 })
       const res = await fetch(dataUrl)
       const blob = await res.blob()

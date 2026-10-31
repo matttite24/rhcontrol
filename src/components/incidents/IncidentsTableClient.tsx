@@ -1,5 +1,7 @@
 'use client'
 
+import { useEverTrue } from '@/hooks/use-ever-true'
+import dynamic from 'next/dynamic'
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { Incident, IncidentStatus, Organization } from '@/types/employee'
@@ -16,7 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { INCIDENT_TYPE_OPTIONS } from '@/lib/incidents/constants'
 import { getIncidentCode, INCIDENT_PREFIX_MAP } from '@/lib/incidents/sequence'
-import { IncidentDetailModal } from './IncidentDetailModal'
+const IncidentDetailModal = dynamic(() => import('./IncidentDetailModal').then((m) => m.IncidentDetailModal))
 import { FileText, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -80,6 +82,7 @@ function formatEmissionDate(dateStr?: string | null): string {
 export function IncidentsTableClient({ incidents, organization }: IncidentsTableClientProps) {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const mountDetail = useEverTrue(detailModalOpen)
 
   // La paginación ya viene resuelta por el servidor (ver PaginationBar en la
   // page): `incidents` aquí es solo la página actual, no la lista completa.
@@ -265,7 +268,8 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
       </div>
 
       {/* Modal interactivo de Detalle & Aprobación */}
-      <IncidentDetailModal
+      {mountDetail && (
+<IncidentDetailModal
         incident={selectedIncident}
         open={detailModalOpen}
         onOpenChange={setDetailModalOpen}
@@ -274,6 +278,7 @@ export function IncidentsTableClient({ incidents, organization }: IncidentsTable
         }}
         organization={organization}
       />
+)}
     </>
   )
 }

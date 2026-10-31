@@ -1,5 +1,7 @@
 'use client'
 
+import { useEverTrue } from '@/hooks/use-ever-true'
+import dynamic from 'next/dynamic'
 import { useState } from 'react'
 import Link from 'next/link'
 import {
@@ -17,7 +19,7 @@ import { DEDUCTION_TYPE_OPTIONS } from '@/lib/deductions/constants'
 import { Deduction, Organization } from '@/types/employee'
 import { DollarSign, Repeat, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { DeductionDetailModal } from './DeductionDetailModal'
+const DeductionDetailModal = dynamic(() => import('./DeductionDetailModal').then((m) => m.DeductionDetailModal))
 import { DEDUCTION_DISPLAY_STATUS, resolveDeductionDisplayStatus } from '@/lib/deductions/status'
 
 interface DeductionsTableClientProps {
@@ -38,6 +40,7 @@ function getInitials(name: string) {
 export function DeductionsTableClient({ deductions, organization }: DeductionsTableClientProps) {
   const [selectedDeduction, setSelectedDeduction] = useState<Deduction | null>(null)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const mountDetail = useEverTrue(detailModalOpen)
 
   // La paginación ya viene resuelta por el servidor (ver PaginationBar en la
   // page): `deductions` aquí es solo la página actual, no la lista completa.
@@ -177,7 +180,8 @@ export function DeductionsTableClient({ deductions, organization }: DeductionsTa
         </Table>
       </div>
 
-      <DeductionDetailModal
+      {mountDetail && (
+<DeductionDetailModal
         deduction={selectedDeduction}
         open={detailModalOpen}
         onOpenChange={setDetailModalOpen}
@@ -187,6 +191,7 @@ export function DeductionsTableClient({ deductions, organization }: DeductionsTa
         organization={organization}
         rollTitle={selectedDeduction?.deduction_roll_title ?? null}
       />
+)}
     </>
   )
 }

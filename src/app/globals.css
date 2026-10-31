@@ -359,3 +359,16 @@
   }
   .auth-enter > * { animation-delay: 0ms !important; }
 }
+
+/* Contenedores de tabla: se atenúan mientras un filtro/pestaña/página carga
+   (ver components/layout/nav-pending.ts). */
+[data-pending-dim] {
+  transition: opacity 150ms ease-out;
+}
+html[data-nav-pending="true"] [data-pending-dim] {
+  opacity: 0.55;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-pending-dim] { transition: none; }
+}

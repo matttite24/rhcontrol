@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { timed } from '@/lib/utils/timing'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -46,9 +47,10 @@ export async function updateSession(request: NextRequest) {
       )
     })
 
-    const { data } = await Promise.race([supabase.auth.getUser(), timeout])
+    // getClaims valida el JWT localmente (sin ir a Supabase Auth en cada request)
+    const { data } = await Promise.race([timed('proxy:getClaims', supabase.auth.getClaims()), timeout])
     clearTimeout(timeoutId)
-    user = data.user
+    user = data?.claims ?? null
   } catch (error) {
     console.error('[middleware] Error/timeout al obtener usuario:', error)
     // Fail-safe: tratamos como no autenticado en vez de colgar la request

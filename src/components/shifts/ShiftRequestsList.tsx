@@ -1,5 +1,6 @@
 'use client'
 
+import { useEverTrue } from '@/hooks/use-ever-true'
 import { useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -12,7 +13,7 @@ import {
   TableHead,
 } from '@/components/ui/table'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
-import { ShiftRequestDetailModal } from './ShiftRequestDetailModal'
+const ShiftRequestDetailModal = dynamic(() => import('./ShiftRequestDetailModal').then((m) => m.ShiftRequestDetailModal))
 import { ShiftRequestRow } from './ShiftRequestRow'
 import { Clock, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -58,6 +59,7 @@ export function ShiftRequestsList({
   const router = useRouter()
   const [selectedRequest, setSelectedRequest] = useState<ShiftRequest | null>(null)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const mountDetail = useEverTrue(detailModalOpen)
   const [editingRequest, setEditingRequest] = useState<ShiftRequest | null>(null)
   const [editModalOpen, setEditModalOpen] = useState(false)
 
@@ -192,13 +194,15 @@ export function ShiftRequestsList({
       </div>
 
       {/* Modal de Detalle, Impresión y Aprobación */}
-      <ShiftRequestDetailModal
+      {mountDetail && (
+<ShiftRequestDetailModal
         request={selectedRequest}
         open={detailModalOpen}
         onOpenChange={handleDetailOpenChange}
         onStatusChanged={handleStatusChanged}
         organization={organization}
       />
+)}
 
       {/* Modal de Edición: reutiliza el mismo wizard de creación, precargado
           con los datos de la solicitud pendiente (ver EDITABLE_TYPES). */}

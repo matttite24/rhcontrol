@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { NavLink } from '@/components/layout/NavLink'
 import { buttonVariants } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -18,7 +18,7 @@ interface PaginationBarProps {
 }
 
 /**
- * Paginación server-side: navega con <Link href="?page=N"> en vez de estado
+ * Paginación server-side: navega con <NavLink href="?page=N"> en vez de estado
  * de React, así cada página es una petición real al servidor (con su propio
  * .range() en la query de Supabase) — no un slice() de una lista ya cargada
  * completa. Comparte el mismo layout visual en las 4 tablas paginadas
@@ -50,7 +50,7 @@ export function PaginationBar({
         {totalCount === 1 ? itemLabel.singular : itemLabel.plural}
       </span>
       <div className="flex items-center gap-2">
-        <Link
+        <NavLink
           href={buildHref(Math.max(1, currentPage - 1))}
           aria-disabled={currentPage === 1}
           tabIndex={currentPage === 1 ? -1 : undefined}
@@ -62,7 +62,7 @@ export function PaginationBar({
         >
           <ChevronLeft className="h-3.5 w-3.5" />
           Anterior
-        </Link>
+        </NavLink>
         <div className="flex items-center gap-1">
           {pageNumbers.map((page, idx) =>
             page === 'ellipsis' ? (
@@ -70,7 +70,7 @@ export function PaginationBar({
                 …
               </span>
             ) : (
-              <Link
+              <NavLink
                 key={page}
                 href={buildHref(page)}
                 className={cn(
@@ -79,11 +79,11 @@ export function PaginationBar({
                 )}
               >
                 {page}
-              </Link>
+              </NavLink>
             )
           )}
         </div>
-        <Link
+        <NavLink
           href={buildHref(Math.min(totalPages, currentPage + 1))}
           aria-disabled={currentPage === totalPages}
           tabIndex={currentPage === totalPages ? -1 : undefined}
@@ -95,7 +95,7 @@ export function PaginationBar({
         >
           Siguiente
           <ChevronRight className="h-3.5 w-3.5" />
-        </Link>
+        </NavLink>
       </div>
     </div>
   )

@@ -151,7 +151,7 @@ export default async function PayrollHistoryPage({ searchParams }: PayrollHistor
       />
 
       {/* Tabla de Historial a Ancho Completo */}
-      <div className="flex-1 p-6 md:p-8 w-full">
+      <div data-pending-dim className="flex-1 p-6 md:p-8 w-full">
         {filteredReports.length > 0 ? (
           <div className="rounded-xl border bg-card shadow-xs overflow-hidden w-full">
             <Table>

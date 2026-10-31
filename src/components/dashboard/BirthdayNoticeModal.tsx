@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Check, Copy, Download, MessageSquare, Cake, PartyPopper, Gift, Sparkles } from 'lucide-react'
-import { toPng } from 'html-to-image'
 
 interface BirthdayNoticeModalProps {
   open: boolean
@@ -49,6 +48,7 @@ export function BirthdayNoticeModal({
     if (!bannerRef.current) return
     try {
       setGenerating(true)
+      const { toPng } = await import('html-to-image')
       const dataUrl = await toPng(bannerRef.current, {
         quality: 1,
         pixelRatio: 2,
@@ -70,6 +70,7 @@ export function BirthdayNoticeModal({
     if (!bannerRef.current) return
     try {
       setGenerating(true)
+      const { toPng } = await import('html-to-image')
       const dataUrl = await toPng(bannerRef.current, {
         quality: 1,
         pixelRatio: 2,

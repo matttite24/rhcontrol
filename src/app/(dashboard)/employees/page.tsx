@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { timed } from '@/lib/utils/timing'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { buttonVariants } from '@/components/ui/button'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -21,7 +22,7 @@ export default async function EmployeesPage({
 }) {
   const params = await searchParams
   const supabase = await createClient()
-  const currentOrg = await getCurrentOrganization()
+  const currentOrg = await timed('employees:getCurrentOrganization', getCurrentOrganization())
 
   if (!currentOrg) {
     return (
@@ -98,21 +99,27 @@ export default async function EmployeesPage({
     { count: probationCount },
     { count: inactiveCount },
   ] = await Promise.all([
-    query,
-    supabase
-      .from('departments')
-      .select('name')
-      .eq('organization_id', currentOrg.id)
-      .order('name', { ascending: true }),
-    supabase
-      .from('positions')
-      .select('name')
-      .eq('organization_id', currentOrg.id)
-      .order('name', { ascending: true }),
-    countFor(),
-    countFor('activo'),
-    countFor('prueba'),
-    countFor('inactivo'),
+    timed('employees:list', query),
+    timed(
+      'employees:departments',
+      supabase
+        .from('departments')
+        .select('name')
+        .eq('organization_id', currentOrg.id)
+        .order('name', { ascending: true })
+    ),
+    timed(
+      'employees:positions',
+      supabase
+        .from('positions')
+        .select('name')
+        .eq('organization_id', currentOrg.id)
+        .order('name', { ascending: true })
+    ),
+    timed('employees:count-all', countFor()),
+    timed('employees:count-activo', countFor('activo')),
+    timed('employees:count-prueba', countFor('prueba')),
+    timed('employees:count-inactivo', countFor('inactivo')),
   ])
 
   const employees = (employeesData ?? []) as (Employee & {
@@ -199,7 +206,7 @@ export default async function EmployeesPage({
       />
 
       {/* Tabla a Ancho Completo */}
-      <div className="flex-1 w-full overflow-x-auto bg-card">
+      <div data-pending-dim className="flex-1 w-full overflow-x-auto bg-card">
         {error ? (
           <div className="p-8 text-destructive text-sm">
             Error al consultar la base de datos: {error.message}

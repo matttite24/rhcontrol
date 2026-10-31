@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import { SubHeaderLink } from '@/components/layout/subheader-nav'
 import { cn } from '@/lib/utils'
 
 export type StatusTabTone = 'warning' | 'success' | 'danger' | 'neutral'
@@ -51,16 +51,13 @@ export function StatusTabs({ tabs, activeValue, buildHref, ariaLabel, className 
         // (para que siempre haya una seleccionada) y las marcadas alwaysShow.
         if (count === 0 && !isActive && !tab.alwaysShow) return null
         return (
-          <Link
+          <SubHeaderLink
             key={tab.value}
             href={buildHref(tab.value)}
-            aria-current={isActive ? 'page' : undefined}
-            className={cn(
-              'inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 font-medium whitespace-nowrap transition-colors',
-              isActive
-                ? 'bg-background text-foreground font-semibold shadow-sm ring-1 ring-border'
-                : 'text-foreground/70 hover:bg-background/60 hover:text-foreground'
-            )}
+            active={isActive}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 font-medium whitespace-nowrap transition-colors"
+            activeClassName="bg-background text-foreground font-semibold shadow-sm ring-1 ring-border"
+            inactiveClassName="text-foreground/70 hover:bg-background/60 hover:text-foreground"
           >
             {tab.label}
             {count !== undefined && (
@@ -73,7 +70,7 @@ export function StatusTabs({ tabs, activeValue, buildHref, ariaLabel, className 
                 {count}
               </span>
             )}
-          </Link>
+          </SubHeaderLink>
         )
       })}
     </nav>

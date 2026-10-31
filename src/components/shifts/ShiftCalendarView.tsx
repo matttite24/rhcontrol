@@ -1,5 +1,7 @@
 'use client'
 
+import { useEverTrue } from '@/hooks/use-ever-true'
+import dynamic from 'next/dynamic'
 import React, { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -15,7 +17,7 @@ import {
   PopoverContent,
 } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
-import { ShiftRequestDetailModal } from './ShiftRequestDetailModal'
+const ShiftRequestDetailModal = dynamic(() => import('./ShiftRequestDetailModal').then((m) => m.ShiftRequestDetailModal))
 import { NewShiftRequestButton } from './NewShiftRequestButton'
 import { toast } from '@/components/ui/toast'
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Moon, Filter, Check, ChevronDown, RefreshCw, Palmtree, CalendarSearch, Info, UserX, CalendarOff, Fingerprint } from 'lucide-react'
@@ -294,6 +296,7 @@ export function ShiftCalendarView({
   }, [])
   const [selectedRequest, setSelectedRequest] = useState<ShiftRequest | null>(null)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const mountDetail = useEverTrue(detailModalOpen)
   const [goToDateOpen, setGoToDateOpen] = useState(false)
   // Dirección del último cambio de período, para animar la entrada del contenido
   // en el mismo sentido del movimiento (spatial consistency): siguiente entra
@@ -1288,11 +1291,13 @@ export function ShiftCalendarView({
       </div>
 
       {/* Modal interactivo al hacer clic sobre el icono de horas extras */}
-      <ShiftRequestDetailModal
+      {mountDetail && (
+<ShiftRequestDetailModal
         request={selectedRequest}
         open={detailModalOpen}
         onOpenChange={setDetailModalOpen}
       />
+)}
     </>
   )
 }

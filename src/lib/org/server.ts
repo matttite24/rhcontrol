@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { Organization } from '@/types/employee'
 import { withTimeout } from '@/lib/utils/with-timeout'
+import { timed } from '@/lib/utils/timing'
 
 const ORG_COOKIE_NAME = 'rh_current_org_id'
 
@@ -25,19 +26,26 @@ export const getUserOrganizations = cache(async (): Promise<Organization[]> => {
     const supabase = await createClient()
 
     // 1. Obtener usuario autenticado
-    const {
-      data: { user },
-    } = await withTimeout(supabase.auth.getUser(), 8000, 'Timeout obteniendo usuario autenticado')
+    // getClaims valida el JWT localmente: evita un viaje de red a Supabase Auth
+    const { data: claimsData } = await withTimeout(
+      timed('org:getClaims', supabase.auth.getClaims()),
+      8000,
+      'Timeout obteniendo usuario autenticado'
+    )
+    const userId = claimsData?.claims?.sub
 
-    if (!user) return []
+    if (!userId) return []
 
     // 2. Consultar organizaciones vinculadas al usuario
     const { data: members, error } = await withTimeout(
-      Promise.resolve(
-        supabase
-          .from('organization_members')
-          .select('organization_id, organizations (*)')
-          .eq('user_id', user.id)
+      timed(
+        'org:members',
+        Promise.resolve(
+          supabase
+            .from('organization_members')
+            .select('organization_id, organizations (*)')
+            .eq('user_id', userId)
+        )
       ),
       8000,
       'Timeout consultando organizaciones del usuario'

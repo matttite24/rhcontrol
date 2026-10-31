@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { fetchEmployeePickerList, findMatchingEmployeeIds } from '@/lib/employees/picker'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
@@ -46,29 +47,13 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
 
   // Empleados de la organización (para el asistente modal, y para resolver
   // la búsqueda `q` por nombre/cédula antes de filtrar descuentos).
-  const { data: employeesData } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('organization_id', currentOrg.id)
-    .neq('status', 'inactivo')
-    .order('full_name')
-
-  const employees = employeesData || []
 
   // La búsqueda `q` matchea por título O por nombre/cédula del empleado
   // (tabla relacionada, no filtrable directo con .or()) — se resuelve primero
   // qué empleados matchean el término, igual que en /incidents.
-  let matchingEmployeeIds: string[] | null = null
-  if (params.q) {
-    const term = params.q.toLowerCase()
-    matchingEmployeeIds = employees
-      .filter(
-        (e) =>
-          e.full_name?.toLowerCase().includes(term) ||
-          e.national_id?.toLowerCase().includes(term)
-      )
-      .map((e) => e.id)
-  }
+  const matchingEmployeeIds: string[] | null = params.q
+    ? await findMatchingEmployeeIds(supabase, currentOrg.id, params.q, { excludeInactive: true })
+    : null
 
   // idsFilter/qFilter se aplican igual en ambas queries de abajo (la
   // paginada y la de suma total) para que ambas vean exactamente el mismo
@@ -141,6 +126,7 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
     )
 
   const [
+    { data: employees },
     { data: deductionsData, count },
     { count: allCount },
     { count: pendingCount },
@@ -148,6 +134,7 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
     { count: inRollCount },
     { count: annulledCount },
   ] = await Promise.all([
+    fetchEmployeePickerList(supabase, currentOrg.id, { excludeInactive: true }),
     dataQuery,
     countFor('todos'),
     countFor('pendiente'),
@@ -252,7 +239,7 @@ export default async function DeductionsPage({ searchParams }: DeductionsPagePro
       />
 
       {/* Tabla a Ancho Completo */}
-      <div className="flex-1 w-full overflow-x-auto bg-card">
+      <div data-pending-dim className="flex-1 w-full overflow-x-auto bg-card">
         {filteredDeductions.length > 0 ? (
           <>
             <DeductionsTableClient deductions={filteredDeductions} organization={currentOrg}  />

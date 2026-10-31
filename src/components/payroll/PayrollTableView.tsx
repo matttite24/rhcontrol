@@ -1,5 +1,7 @@
 'use client'
 
+import { useEverTrue } from '@/hooks/use-ever-true'
+import dynamic from 'next/dynamic'
 import React, { useState, useTransition } from 'react'
 import {
   Table,
@@ -12,7 +14,8 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { PayrollEmployeeCalculation, PayrollDetailModal } from './PayrollDetailModal'
+import type { PayrollEmployeeCalculation } from './PayrollDetailModal'
+const PayrollDetailModal = dynamic(() => import('./PayrollDetailModal').then((m) => m.PayrollDetailModal))
 import { FileText, Eye, Printer, Download, TrendingUp, TrendingDown, DollarSign, CheckCircle2, Circle } from 'lucide-react'
 import { setEmployeeReviewedAction } from '@/lib/payroll/actions'
 import { toast } from '@/components/ui/toast'
@@ -76,6 +79,7 @@ export function PayrollTableView({
     [calculations, selectedEmployeeId]
   )
   const [modalOpen, setModalOpen] = useState(false)
+  const mountDetail = useEverTrue(modalOpen)
 
   // Revisado: estado local optimista; se persiste en payroll_report_reviews.
   const reviewEnabled = Boolean(reviewReportId && organizationId)
@@ -321,7 +325,8 @@ export function PayrollTableView({
         </Table>
       </div>
 
-      <PayrollDetailModal
+      {mountDetail && (
+<PayrollDetailModal
         item={selectedEmployee}
         startDate={startDate}
         endDate={endDate}
@@ -331,6 +336,7 @@ export function PayrollTableView({
         organizationId={organizationId}
         hasSavedReport={hasSavedReport}
       />
+)}
     </>
   )
 }

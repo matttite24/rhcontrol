@@ -46,12 +46,11 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
   // La lista de departamentos siempre se necesita para el selector de filtro
   // (es liviana: solo nombres) — es la única consulta que no depende de
   // haber elegido un rango de fechas.
-  const { data: deptData } = await supabase
-    .from('departments')
-    .select('name')
-    .eq('organization_id', currentOrg.id)
-    .order('name')
-  const departments = (deptData || []).map((d) => d.name)
+  // Se lanza sin await para que corra en paralelo con el resto de consultas
+  // (se resuelve más abajo, junto al solapamiento).
+  const deptPromise = Promise.resolve(
+    supabase.from('departments').select('name').eq('organization_id', currentOrg.id).order('name')
+  )
 
   let filteredCalculations: ReturnType<typeof calculatePayroll> = []
 
@@ -60,20 +59,18 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
   // lo rechaza al guardar (ver add_payroll_reports_no_overlap.sql); aquí se
   // avisa de antemano y se deshabilita Guardar Borrador.
   let overlappingReport: { title: string; start_date: string; end_date: string } | null = null
-  if (hasDateRange) {
-    const { data: overlapData } = await supabase
-      .from('payroll_reports')
-      .select('title, start_date, end_date, department')
-      .eq('organization_id', currentOrg.id)
-      .in('status', ['cerrado', 'pagado'])
-      .lte('start_date', endDate)
-      .gte('end_date', startDate)
-      .order('end_date', { ascending: false })
-    overlappingReport =
-      (overlapData || []).find(
-        (r) => !r.department || !params.department || r.department === params.department
-      ) ?? null
-  }
+  const overlapPromise = hasDateRange
+    ? Promise.resolve(
+        supabase
+          .from('payroll_reports')
+          .select('title, start_date, end_date, department')
+          .eq('organization_id', currentOrg.id)
+          .in('status', ['cerrado', 'pagado'])
+          .lte('start_date', endDate)
+          .gte('end_date', startDate)
+          .order('end_date', { ascending: false })
+      )
+    : null
 
   if (hasDateRange) {
     // Las 4 consultas de abajo son independientes entre sí (ninguna necesita
@@ -199,6 +196,15 @@ export default async function PayrollPage({ searchParams }: PayrollPageProps) {
   }
 
   const hasFilters = Boolean(params.q || params.department || params.start_date || params.end_date)
+
+  const [{ data: deptData }, overlapRes] = await Promise.all([deptPromise, overlapPromise])
+  const departments = (deptData || []).map((d) => d.name)
+  if (overlapRes) {
+    overlappingReport =
+      (overlapRes.data || []).find(
+        (r) => !r.department || !params.department || r.department === params.department
+      ) ?? null
+  }
 
   return (
     <PayrollWorkspaceProvider

@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { timed } from '@/lib/utils/timing'
+import { fetchEmployeePickerList, findMatchingEmployeeIds } from '@/lib/employees/picker'
 import { getCurrentOrganization } from '@/lib/org/server'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SubHeader } from '@/components/layout/SubHeader'
@@ -77,13 +79,6 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
 
   // Obtener empleados de la organización (para el asistente modal, y para
   // resolver la búsqueda `q` por nombre/cédula antes de filtrar incidencias).
-  const { data: employeesData } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('organization_id', currentOrg.id)
-    .order('full_name')
-
-  const employees = employeesData || []
 
   // La búsqueda `q` matchea por título de la incidencia O por nombre/cédula
   // del empleado. Como el empleado es una tabla relacionada, `.or()` no
@@ -91,17 +86,9 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
   // empleados matchean el término y se filtra `incidents` por esos IDs
   // (combinado con el propio título) en una sola query con .range() real,
   // en vez de traer todo y recortar en memoria como antes.
-  let matchingEmployeeIds: string[] | null = null
-  if (params.q) {
-    const term = params.q.toLowerCase()
-    matchingEmployeeIds = employees
-      .filter(
-        (e) =>
-          e.full_name?.toLowerCase().includes(term) ||
-          e.national_id?.toLowerCase().includes(term)
-      )
-      .map((e) => e.id)
-  }
+  const matchingEmployeeIds: string[] | null = params.q
+    ? await findMatchingEmployeeIds(supabase, currentOrg.id, params.q, {})
+    : null
 
   // Consulta de incidencias con información del empleado
   let query = supabase
@@ -168,6 +155,7 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
   }
 
   const [
+    { data: employees },
     { data: incidents, error, count },
     { count: allCount },
     { count: pendingCount },
@@ -176,13 +164,14 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
     { count: rejectedCount },
     { count: annulledCount },
   ] = await Promise.all([
-    query,
-    countFor(),
-    countFor('pendiente'),
-    countFor('registrado'),
-    countFor('aprobado'),
-    countFor('rechazado'),
-    countFor('anulado'),
+    timed('incidents:employees', fetchEmployeePickerList(supabase, currentOrg.id, {})),
+    timed('incidents:list', query),
+    timed('incidents:count-all', countFor()),
+    timed('incidents:count-pendiente', countFor('pendiente')),
+    timed('incidents:count-registrado', countFor('registrado')),
+    timed('incidents:count-aprobado', countFor('aprobado')),
+    timed('incidents:count-rechazado', countFor('rechazado')),
+    timed('incidents:count-anulado', countFor('anulado')),
   ])
 
   const filteredIncidents = (incidents as Incident[]) || []
@@ -287,7 +276,7 @@ export default async function IncidentsPage({ searchParams }: IncidentsPageProps
       />
 
       {/* Tabla a Ancho Completo */}
-      <div className="flex-1 w-full overflow-x-auto bg-card">
+      <div data-pending-dim className="flex-1 w-full overflow-x-auto bg-card">
         {filteredIncidents.length > 0 ? (
           <>
             <IncidentsTableClient incidents={filteredIncidents} organization={currentOrg} />

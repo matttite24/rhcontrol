@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useTransition } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Search, X, ChevronDown, Check } from 'lucide-react'
@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { buttonVariants } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
+import { usePendingFlag } from '@/components/layout/nav-pending'
+import { SubHeaderNavContext } from '@/components/layout/subheader-nav'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 
 export interface FilterOption {
@@ -72,7 +74,7 @@ const CONTROL_HEIGHT = 'h-9'
 // selects y el rango de fecha, en cambio, navegan de inmediato al elegir un
 // valor — ahí no hay ambigüedad de "¿terminó de escribir?" como sí la hay
 // con texto libre.
-const SEARCH_DEBOUNCE_MS = 400
+const SEARCH_DEBOUNCE_MS = 250
 
 export function SubHeader({
   action,
@@ -89,6 +91,21 @@ export function SubHeader({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  // isPending se activa mientras el servidor responde al cambiar un filtro:
+  // sin esto la pantalla parece congelada porque loading.tsx no se muestra
+  // cuando solo cambian los searchParams.
+  const [isPending, startTransition] = useTransition()
+  usePendingFlag(isPending)
+  // Estado optimista: la pestaña/selector elegido se marca al instante, sin
+  // esperar a que lleguen los datos. Se descarta cuando termina la navegación.
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
+  const [pendingSelects, setPendingSelects] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!isPending) {
+      setPendingHref(null)
+      setPendingSelects({})
+    }
+  }, [isPending])
 
   const fromName = dateRange?.fromName || 'date_from'
   const toName = dateRange?.toName || 'date_to'
@@ -109,7 +126,9 @@ export function SubHeader({
         }
       }
       const query = params.toString()
-      router.replace(`${action || pathname}${query ? `?${query}` : ''}`)
+      startTransition(() => {
+        router.replace(`${action || pathname}${query ? `?${query}` : ''}`)
+      })
     },
     [router, pathname, action, searchParams]
   )
@@ -149,7 +168,21 @@ export function SubHeader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchValue])
 
+  const navCtx = React.useMemo(
+    () => ({
+      pendingHref,
+      navigate: (href: string) => {
+        setPendingHref(href)
+        startTransition(() => {
+          router.push(href)
+        })
+      },
+    }),
+    [router, pendingHref]
+  )
+
   function handleSelectChange(name: string, value: string) {
+    setPendingSelects((prev) => ({ ...prev, [name]: value }))
     navigateWithParams({ [name]: value })
   }
 
@@ -178,6 +211,7 @@ export function SubHeader({
   }
 
   return (
+    <SubHeaderNavContext.Provider value={navCtx}>
     <div
       className={cn(
         'relative bg-card/75 supports-[backdrop-filter]:backdrop-blur-md px-6 py-3 sticky top-[73px] z-10',
@@ -185,6 +219,15 @@ export function SubHeader({
         className
       )}
     >
+      {isPending && (
+        <div
+          role="progressbar"
+          aria-label="Aplicando filtros"
+          className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-primary/20"
+        >
+          <div className="h-full w-1/3 bg-primary animate-pulse" />
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 w-full">
         <div
           className={cn(
@@ -211,7 +254,7 @@ export function SubHeader({
 
           {/* Selectores configurados — navegan de inmediato al elegir un valor */}
           {selects?.map((sel) => {
-            const currentValue = sel.defaultValue ?? ''
+            const currentValue = pendingSelects[sel.name] ?? sel.defaultValue ?? ''
             return (
               <Popover key={sel.name}>
                 <PopoverTrigger
@@ -319,5 +362,6 @@ export function SubHeader({
         )}
       </div>
     </div>
+    </SubHeaderNavContext.Provider>
   )
 }
