@@ -1,3 +1,5 @@
+import { roundMoney } from '@/lib/utils/money'
+
 /**
  * Utilidades y constantes laborales para Ecuador
  */
@@ -147,13 +149,13 @@ export function calculateEcuadorDecimals({
 
   // 13er Sueldo Mensualizado = 1/12 de los ingresos imponibles del mes
   const decimoTercero = !accumulateDecimals && !isOwnerManager
-    ? Number((taxableIncome / 12).toFixed(2))
+    ? roundMoney(taxableIncome / 12)
     : 0
 
   // 14to Sueldo Mensualizado = 1/12 de 1 SBU vigente fijado
   const activeSbu = sbu > 0 ? sbu : ECUADOR_SBU_DEFAULT
   const decimoCuarto = !accumulateDecimals && !isOwnerManager
-    ? Number((activeSbu / 12).toFixed(2))
+    ? roundMoney(activeSbu / 12)
     : 0
 
   // Evaluación de Fondos de Reserva según fecha de ingreso y ajuste
@@ -167,14 +169,14 @@ export function calculateEcuadorDecimals({
       })
 
   const fondosReserva = reserveCheck.eligible
-    ? Number((taxableIncome * RESERVE_FUNDS_RATE).toFixed(2))
+    ? roundMoney(taxableIncome * RESERVE_FUNDS_RATE)
     : 0
 
   return {
     decimoTercero,
     decimoCuarto,
     fondosReserva,
-    totalMensualizado: Number((decimoTercero + decimoCuarto + fondosReserva).toFixed(2)),
+    totalMensualizado: roundMoney(decimoTercero + decimoCuarto + fondosReserva),
     taxableIncome,
     isMonthly: !accumulateDecimals,
     reserveFundsEligible: reserveCheck.eligible,

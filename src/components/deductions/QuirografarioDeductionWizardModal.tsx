@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { createQuirografarioDeductionAction } from '@/lib/deductions/actions'
 import { cn } from '@/lib/utils'
+import { roundMoney } from '@/lib/utils/money'
 
 interface QuirografarioDeductionWizardModalProps {
   organizationId: string
@@ -121,7 +122,7 @@ export function QuirografarioDeductionWizardModal({
 
   const parsedAmounts = amounts.map((a) => Math.max(0, parseFloat(a) || 0))
   const amountsValid = amounts.length === schedule.length && parsedAmounts.every((a) => a > 0)
-  const remainingTotal = Number(parsedAmounts.reduce((sum, a) => sum + a, 0).toFixed(2))
+  const remainingTotal = roundMoney(parsedAmounts.reduce((sum, a) => sum + a, 0))
   const hasCustomAmounts = parsedAmounts.some((a) => a !== parsedAmounts[0])
 
   // Entra al paso 3 con todas las cuotas iguales al valor base; el usuario ajusta las que difieran.
@@ -445,7 +446,7 @@ export function QuirografarioDeductionWizardModal({
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Total estimado a descontar:</span>
                     <span className="font-bold font-mono text-sky-600 dark:text-sky-400">
-                      ${Number((parsedAmount * remaining).toFixed(2)).toFixed(2)}
+                      ${roundMoney(parsedAmount * remaining).toFixed(2)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">

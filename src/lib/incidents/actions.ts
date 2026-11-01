@@ -5,6 +5,7 @@ import { Incident } from '@/types/employee'
 import { revalidatePath } from 'next/cache'
 import { getNextIncidentSequenceCode } from './sequence'
 import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
+import { roundMoney } from '@/lib/utils/money'
 
 export interface CreateWarningIncidentParams {
   organizationId: string
@@ -398,7 +399,7 @@ export async function createSalaryAdvanceAction(params: CreateSalaryAdvanceParam
     }
 
     const count = params.modality === 'mes_actual' ? 1 : Math.max(1, params.installmentsCount || 1)
-    const basePerInstallment = Number((params.totalAmount / count).toFixed(2))
+    const basePerInstallment = roundMoney(params.totalAmount / count)
 
     // Calcular cronograma proyectado de cuotas
     const schedule: SalaryAdvanceInstallment[] = []
@@ -414,7 +415,7 @@ export async function createSalaryAdvanceAction(params: CreateSalaryAdvanceParam
 
       // Ajuste de centavos en la última cuota para cuadrar exacto
       const isLast = i === count - 1
-      const instAmount = isLast ? Number((params.totalAmount - accumulated).toFixed(2)) : basePerInstallment
+      const instAmount = isLast ? roundMoney(params.totalAmount - accumulated) : basePerInstallment
       accumulated += instAmount
 
       schedule.push({

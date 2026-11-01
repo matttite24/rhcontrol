@@ -33,6 +33,7 @@ import { getDeductionCode } from '@/lib/deductions/sequence'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
+import { roundMoney } from '@/lib/utils/money'
 
 interface DisciplinaryFineWizardModalProps {
   organizationId: string
@@ -157,7 +158,7 @@ export function DisciplinaryFineWizardModal({
   // Límite legal: Art. 44 lit. b) del Código del Trabajo — máximo 10% de la remuneración mensual
   const maxAllowedAmount = useMemo(() => {
     if (!employeeSalary || employeeSalary <= 0) return null
-    return Number((employeeSalary * 0.1).toFixed(2))
+    return roundMoney(employeeSalary * 0.1)
   }, [employeeSalary])
 
   const exceedsLegalLimit = useMemo(() => {

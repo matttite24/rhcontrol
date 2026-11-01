@@ -27,6 +27,7 @@ import {
   Home,
   Receipt,
 } from 'lucide-react'
+import { roundMoney } from '@/lib/utils/money'
 
 interface PayrollSimulatorViewProps {
   currentOrg: Organization | null
@@ -90,63 +91,63 @@ export function PayrollSimulatorView({ currentOrg }: PayrollSimulatorViewProps) 
     // Horas Extras (sobre jornada de 240 horas mensuales en Ecuador)
     // Valor hora normal = Sueldo / 240
     const normalHourlyRate = salary > 0 ? salary / 240 : 0
-    const overtime50Amount = Number(((Number(overtime50Hours) || 0) * (normalHourlyRate * 1.5)).toFixed(2))
-    const overtime100Amount = Number(((Number(overtime100Hours) || 0) * (normalHourlyRate * 2.0)).toFixed(2))
-    const totalOvertimeAmount = Number((overtime50Amount + overtime100Amount).toFixed(2))
+    const overtime50Amount = roundMoney((Number(overtime50Hours) || 0) * (normalHourlyRate * 1.5))
+    const overtime100Amount = roundMoney((Number(overtime100Hours) || 0) * (normalHourlyRate * 2.0))
+    const totalOvertimeAmount = roundMoney(overtime50Amount + overtime100Amount)
 
     // Base imponible IESS (Sueldo + Bonos + Horas Extras)
-    const taxableIncome = Number((salary + totalBonuses + totalOvertimeAmount).toFixed(2))
+    const taxableIncome = roundMoney(salary + totalBonuses + totalOvertimeAmount)
 
     // Décimo Tercero: 1/12 de los ingresos imponibles
     const thirteenthAmount = monthlyThirteenth
-      ? Number((taxableIncome / 12).toFixed(2))
+      ? roundMoney(taxableIncome / 12)
       : 0
 
     // Décimo Cuarto: 1/12 de 1 SBU
     const fourteenthAmount = monthlyFourteenth
-      ? Number((validSbu / 12).toFixed(2))
+      ? roundMoney(validSbu / 12)
       : 0
 
     // Fondos de Reserva: 8.33% del ingreso imponible
     // Si es 'pagar_ingreso', se paga de inmediato. Si es 'pagar_ano', en simulación de nuevo contrato no se percibe de entrada. Si es acumular, va al IESS.
     const reserveFundsAmount = reserveFundsTreatment === 'pagar_ingreso'
-      ? Number((taxableIncome * RESERVE_FUNDS_RATE).toFixed(2))
+      ? roundMoney(taxableIncome * RESERVE_FUNDS_RATE)
       : 0
 
     // Total Beneficios sociales incluidos en el rol
-    const totalSocialBenefits = Number((thirteenthAmount + fourteenthAmount + reserveFundsAmount).toFixed(2))
+    const totalSocialBenefits = roundMoney(thirteenthAmount + fourteenthAmount + reserveFundsAmount)
 
     // Total Ingresos brutos del rol (Imponible + Beneficios mensualizados)
-    const totalIncome = Number((taxableIncome + totalSocialBenefits).toFixed(2))
+    const totalIncome = roundMoney(taxableIncome + totalSocialBenefits)
 
     // Deducción Aporte Personal IESS (9.45% de la materia gravada)
-    const iessPersonal = Number((taxableIncome * IESS_PERSONAL_RATE).toFixed(2))
+    const iessPersonal = roundMoney(taxableIncome * IESS_PERSONAL_RATE)
 
     // Total Deducciones consolidadas (IESS Personal + Descuentos de alimentación/vivienda/otros)
-    const totalDeductions = Number((iessPersonal + totalCustomDeductions).toFixed(2))
+    const totalDeductions = roundMoney(iessPersonal + totalCustomDeductions)
 
     // Líquido a percibir (Neto para el colaborador)
-    const netToReceive = Number(Math.max(0, totalIncome - totalDeductions).toFixed(2))
+    const netToReceive = roundMoney(Math.max(0, totalIncome - totalDeductions))
 
     // Costo para la Empresa (Empleador):
     // Aporte Patronal IESS (12.15% de la materia gravada)
-    const iessEmployer = Number((taxableIncome * IESS_EMPLOYER_RATE).toFixed(2))
+    const iessEmployer = roundMoney(taxableIncome * IESS_EMPLOYER_RATE)
     
     // Provisión total anualizada de beneficios (13vo + 14vo + Fondos de reserva completos)
-    const fullThirteenthCost = Number((taxableIncome / 12).toFixed(2))
-    const fullFourteenthCost = Number((validSbu / 12).toFixed(2))
+    const fullThirteenthCost = roundMoney(taxableIncome / 12)
+    const fullFourteenthCost = roundMoney(validSbu / 12)
     const fullReserveCost = reserveFundsTreatment !== 'pagar_ano' 
-      ? Number((taxableIncome * RESERVE_FUNDS_RATE).toFixed(2)) 
+      ? roundMoney(taxableIncome * RESERVE_FUNDS_RATE) 
       : 0
     
     // Costo mensual total de la plaza para la empresa
-    const totalCompanyCost = Number((
+    const totalCompanyCost = roundMoney(
       taxableIncome + 
       iessEmployer + 
       fullThirteenthCost + 
       fullFourteenthCost + 
       fullReserveCost
-    ).toFixed(2))
+    )
 
     return {
       normalHourlyRate,

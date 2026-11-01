@@ -4,6 +4,7 @@ import { Separator } from '@/components/ui/separator'
 import { ComplianceStatRow } from '@/components/compliance/ComplianceStatRow'
 import { Sparkles, CalendarDays, ShieldCheck, Percent, Clock, Calculator } from 'lucide-react'
 import { IESS_PERSONAL_RATE, IESS_EMPLOYER_RATE, RESERVE_FUNDS_RATE } from '@/lib/payroll/ecuador'
+import { roundMoney } from '@/lib/utils/money'
 
 // Ítems buscables de la Guía de Parámetros Laborales, con las mismas palabras
 // clave que un usuario probablemente escribiría (décimo, IESS, extras, etc.)
@@ -27,14 +28,14 @@ export function ComplianceGuideSection({ sbu, visibility }: ComplianceGuideSecti
   const anyVisible = Object.values(visibility).some(Boolean)
   if (!anyVisible) return null
 
-  const decimoMensual = Number((sbu / 12).toFixed(2))
-  const fondoReservaMinimoSBU = Number((sbu * RESERVE_FUNDS_RATE).toFixed(2))
-  const aportePersonalMinimo = Number((sbu * IESS_PERSONAL_RATE).toFixed(2))
-  const aportePatronalMinimo = Number((sbu * IESS_EMPLOYER_RATE).toFixed(2))
+  const decimoMensual = roundMoney(sbu / 12)
+  const fondoReservaMinimoSBU = roundMoney(sbu * RESERVE_FUNDS_RATE)
+  const aportePersonalMinimo = roundMoney(sbu * IESS_PERSONAL_RATE)
+  const aportePatronalMinimo = roundMoney(sbu * IESS_EMPLOYER_RATE)
   const aporteTotalRate = IESS_PERSONAL_RATE + IESS_EMPLOYER_RATE
-  const costoHoraOrdinariaSBU = Number((sbu / 240).toFixed(2))
-  const horaSuplementariaSBU = Number((costoHoraOrdinariaSBU * 1.5).toFixed(2))
-  const horaExtraordinariaSBU = Number((costoHoraOrdinariaSBU * 2.0).toFixed(2))
+  const costoHoraOrdinariaSBU = roundMoney(sbu / 240)
+  const horaSuplementariaSBU = roundMoney(costoHoraOrdinariaSBU * 1.5)
+  const horaExtraordinariaSBU = roundMoney(costoHoraOrdinariaSBU * 2.0)
 
   return (
     <section className="space-y-4">

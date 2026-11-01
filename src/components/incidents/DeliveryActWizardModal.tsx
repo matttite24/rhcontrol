@@ -46,6 +46,7 @@ import { createDeliveryActIncidentAction } from '@/lib/incidents/actions'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
+import { roundMoney } from '@/lib/utils/money'
 
 interface DeliveryActWizardModalProps {
   organizationId: string
@@ -196,7 +197,7 @@ export function DeliveryActWizardModal({
 
     const qty = Math.max(1, parseInt(newQty, 10) || 1)
     const unitVal = Math.max(0, parseFloat(newUnitVal) || 0)
-    const totVal = parseFloat((qty * unitVal).toFixed(2))
+    const totVal = roundMoney(qty * unitVal)
 
     const newItem: DeliveryAssetItem = {
       id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -229,7 +230,7 @@ export function DeliveryActWizardModal({
     setItems((prev) =>
       prev.map((it) => {
         if (it.id !== id) return it
-        const total = parseFloat((qty * it.unitValue).toFixed(2))
+        const total = roundMoney(qty * it.unitValue)
         return { ...it, quantity: qty, totalValue: total }
       })
     )
@@ -240,7 +241,7 @@ export function DeliveryActWizardModal({
     setItems((prev) =>
       prev.map((it) => {
         if (it.id !== id) return it
-        const total = parseFloat((it.quantity * unitVal).toFixed(2))
+        const total = roundMoney(it.quantity * unitVal)
         return { ...it, unitValue: unitVal, totalValue: total }
       })
     )

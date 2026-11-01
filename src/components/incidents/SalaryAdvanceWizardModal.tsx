@@ -39,6 +39,7 @@ import {
 } from '@/lib/incidents/actions'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { roundMoney } from '@/lib/utils/money'
 
 interface SalaryAdvanceWizardModalProps {
   organizationId: string
@@ -175,7 +176,7 @@ export function SalaryAdvanceWizardModal({
   // Cálculo proyectado de cronograma de cuotas
   const parsedAmount = Math.max(0, parseFloat(totalAmount) || 0)
   const count = modality === 'mes_actual' ? 1 : Math.max(1, installmentsCount || 1)
-  const basePerInstallment = Number((parsedAmount / count).toFixed(2))
+  const basePerInstallment = roundMoney(parsedAmount / count)
 
   const projectedSchedule: SalaryAdvanceInstallment[] = useMemo(() => {
     if (parsedAmount <= 0) return []
@@ -190,7 +191,7 @@ export function SalaryAdvanceWizardModal({
         y += 1
       }
       const isLast = i === count - 1
-      const instAmount = isLast ? Number((parsedAmount - accumulated).toFixed(2)) : basePerInstallment
+      const instAmount = isLast ? roundMoney(parsedAmount - accumulated) : basePerInstallment
       accumulated += instAmount
 
       sched.push({

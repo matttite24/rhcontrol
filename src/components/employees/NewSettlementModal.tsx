@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
+import { roundMoney } from '@/lib/utils/money'
 
 interface NewSettlementModalProps {
   organizationId: string
@@ -71,23 +72,23 @@ export function NewSettlementModal({
   const completeYears = Math.max(1, Math.ceil(yearsServed))
 
   // 1. Proporcionales de ley
-  const pendingSalary = Number(((baseSalary / 30) * 15).toFixed(2)) // Días trabajados del mes
-  const proportional13th = Number(((baseSalary / 12) * 6).toFixed(2)) // 6 meses prom
-  const proportional14th = Number(((460 / 12) * 6).toFixed(2))
-  const pendingVacations = Number(((baseSalary / 24)).toFixed(2))
+  const pendingSalary = roundMoney((baseSalary / 30) * 15) // Días trabajados del mes
+  const proportional13th = roundMoney((baseSalary / 12) * 6) // 6 meses prom
+  const proportional14th = roundMoney((460 / 12) * 6)
+  const pendingVacations = roundMoney((baseSalary / 24))
 
   // 2. Indemnizaciones según causal
   const isDespido = reason === 'despido_intempestivo'
   const isDesahucio = reason === 'despido_intempestivo' || reason === 'desahucio'
 
-  const severancePay = isDespido ? Number((baseSalary * completeYears).toFixed(2)) : 0
-  const desahucioPay = isDesahucio ? Number(((baseSalary * 0.25) * completeYears).toFixed(2)) : 0
+  const severancePay = isDespido ? roundMoney(baseSalary * completeYears) : 0
+  const desahucioPay = isDesahucio ? roundMoney((baseSalary * 0.25) * completeYears) : 0
 
-  const totalIncome = Number((pendingSalary + proportional13th + proportional14th + pendingVacations + severancePay + desahucioPay).toFixed(2))
-  const iessPending = Number((pendingSalary * 0.0945).toFixed(2))
+  const totalIncome = roundMoney(pendingSalary + proportional13th + proportional14th + pendingVacations + severancePay + desahucioPay)
+  const iessPending = roundMoney(pendingSalary * 0.0945)
   const pendingDeductions = 0
-  const totalDeductions = Number((iessPending + pendingDeductions).toFixed(2))
-  const netSettlement = Number(Math.max(0, totalIncome - totalDeductions).toFixed(2))
+  const totalDeductions = roundMoney(iessPending + pendingDeductions)
+  const netSettlement = roundMoney(Math.max(0, totalIncome - totalDeductions))
 
   async function handleSaveSettlement() {
     if (!selectedEmpId) {

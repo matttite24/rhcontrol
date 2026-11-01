@@ -55,6 +55,7 @@ import { cn } from '@/lib/utils'
 import { useClosedPayrollLock } from '@/hooks/use-closed-payroll-lock'
 import { ClosedPayrollLockNotice } from '@/components/shared/ClosedPayrollLockNotice'
 import { formatTimeHHmm, recoveryRanges, recoveryHours } from '@/lib/shifts/time'
+import { roundMoney } from '@/lib/utils/money'
 
 const DAYS_OF_WEEK_MAP: Record<number, DayOfWeek> = {
   0: 'Domingo',
@@ -198,10 +199,10 @@ export function ShiftRequestDetailModal({
         let deductionAmount = 0
         if (metadata.leave_unit === 'dias') {
           const days = metadata.requested_days || 1
-          deductionAmount = Number(((baseSalary / 30) * days).toFixed(2))
+          deductionAmount = roundMoney((baseSalary / 30) * days)
         } else {
           const hours = metadata.requested_hours || Number(request.hours) || 1
-          deductionAmount = Number(((baseSalary / 240) * hours).toFixed(2))
+          deductionAmount = roundMoney((baseSalary / 240) * hours)
         }
 
         // El descuento se aplica en el Rol del MES SIGUIENTE al permiso, no

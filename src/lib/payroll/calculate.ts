@@ -12,6 +12,7 @@ import {
 } from '@/types/employee'
 import { getIncidentCode, getShiftRequestCode, INCIDENT_PREFIX_MAP } from '@/lib/incidents/sequence'
 import { PayrollEmployeeCalculation } from '@/components/payroll/PayrollDetailModal'
+import { roundMoney } from '@/lib/utils/money'
 
 const DAYS_OF_WEEK_MAP: Record<number, DayOfWeek> = {
   0: 'Domingo',
@@ -238,7 +239,7 @@ export function calculatePayroll({
       const hours = adjustment ? adjustment.actual_hours : Number(s.hours) || 0
       const isExtraordinary = s.metadata?.overtime_type === 'extraordinaria_100'
       const surchargeMultiplier = isExtraordinary ? 2.0 : 1.5
-      const amount = Number((hours * baseHourlyRate * surchargeMultiplier).toFixed(2))
+      const amount = roundMoney(hours * baseHourlyRate * surchargeMultiplier)
       return {
         shiftRequestId: s.id,
         hours,
@@ -249,7 +250,7 @@ export function calculatePayroll({
       }
     })
     const overtimeHours = overtimeBreakdown.reduce((sum, o) => sum + o.hours, 0)
-    const overtimeAmount = Number(overtimeBreakdown.reduce((sum, o) => sum + o.amount, 0).toFixed(2))
+    const overtimeAmount = roundMoney(overtimeBreakdown.reduce((sum, o) => sum + o.amount, 0))
 
     // c. Cálculo de Décimos y Beneficios Sociales Mensualizados (Ecuador).
     // El Gerente Propietario autoafiliado no tiene relación de dependencia,
@@ -269,14 +270,14 @@ export function calculatePayroll({
     })
 
     // Total Ingresos (Base + Bonos + Horas Extras + Décimos/Fondos Mensualizados)
-    const totalIncome = Number((baseSalary + bonuses + overtimeAmount + decimalsCalc.totalMensualizado).toFixed(2))
+    const totalIncome = roundMoney(baseSalary + bonuses + overtimeAmount + decimalsCalc.totalMensualizado)
 
     // d. Aporte IESS Personal sobre base sueldo + horas extras + bonos.
     // Gerente Propietario autoafiliado: 17.60% (todo a su cargo, sin aporte
     // patronal aparte). Relación de dependencia normal: 9.45%.
     const iessTaxable = baseSalary + overtimeAmount + bonuses
     const iessRate = getIessPersonalRate(isOwnerManager)
-    const iessPersonal = emp.status === 'activo' ? Number((iessTaxable * iessRate).toFixed(2)) : 0
+    const iessPersonal = emp.status === 'activo' ? roundMoney(iessTaxable * iessRate) : 0
 
     // g (adelantado). Incidencias del empleado — se necesitan antes para
     // calcular días trabajados (incapacidad aprobada resta días del corte)
@@ -331,7 +332,7 @@ export function calculatePayroll({
           empShifts,
           empIncidents
         )
-        mealDeductions = Number((baseAmount * workedDays).toFixed(2))
+        mealDeductions = roundMoney(baseAmount * workedDays)
         recurringDeductionDetail = {
           title: empRecurringRule.title,
           amount: mealDeductions,
@@ -339,7 +340,7 @@ export function calculatePayroll({
           workedDays,
         }
       } else {
-        mealDeductions = Number(baseAmount.toFixed(2))
+        mealDeductions = roundMoney(baseAmount)
         recurringDeductionDetail = {
           title: empRecurringRule.title,
           amount: mealDeductions,
@@ -362,10 +363,10 @@ export function calculatePayroll({
 
     const totalEconomicDeductions =
       empDeductions.reduce((sum, d) => sum + Number(d.amount || 0), 0) + mealDeductions + biweeklyAdvanceDeducted
-    const totalDeductions = Number((iessPersonal + totalEconomicDeductions).toFixed(2))
+    const totalDeductions = roundMoney(iessPersonal + totalEconomicDeductions)
 
     // f. Sueldo Neto a Recibir
-    const netSalary = Number(Math.max(0, totalIncome - totalDeductions).toFixed(2))
+    const netSalary = roundMoney(Math.max(0, totalIncome - totalDeductions))
 
     const actionsList: PayrollEmployeeCalculation['actions'] = []
 
@@ -427,8 +428,8 @@ export function calculatePayroll({
           const base = baseSalary || 460
           leaveDiscount =
             req.metadata?.leave_unit === 'dias'
-              ? Number(((base / 30) * (req.metadata?.requested_days || 1)).toFixed(2))
-              : Number(((base / 240) * (req.metadata?.requested_hours || Number(req.hours) || 1)).toFixed(2))
+              ? roundMoney((base / 30) * (req.metadata?.requested_days || 1))
+              : roundMoney((base / 240) * (req.metadata?.requested_hours || Number(req.hours) || 1))
         }
       }
 

@@ -21,6 +21,7 @@ import { TrendingUp, CheckCircle2, Save, Loader2, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 import { BulkSalaryModal } from './BulkSalaryModal'
+import { roundMoney } from '@/lib/utils/money'
 
 interface BulkUpdateClientProps {
   organizationId: string
@@ -78,9 +79,9 @@ export function BulkUpdateClient({
       data.targetEmployeeIds.forEach((id) => {
         const current = next[id] || 460
         if (data.type === 'percentage') {
-          next[id] = Number((current * (1 + data.value / 100)).toFixed(2))
+          next[id] = roundMoney(current * (1 + data.value / 100))
         } else {
-          next[id] = Number((current + data.value).toFixed(2))
+          next[id] = roundMoney(current + data.value)
         }
       })
       return next

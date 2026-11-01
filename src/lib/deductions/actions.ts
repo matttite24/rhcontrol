@@ -6,6 +6,7 @@ import { DeliveryAssetItem } from '@/lib/incidents/constants'
 import { revalidatePath } from 'next/cache'
 import { getNextDeductionSequenceCode } from './sequence'
 import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
+import { roundMoney } from '@/lib/utils/money'
 
 export interface DeliveryActWithAvailableItems {
   id: string
@@ -216,7 +217,7 @@ export async function createDisciplinaryFineDeductionAction(
       }
     }
 
-    const maxAllowed = Number((params.employeeBaseSalary * 0.1).toFixed(2))
+    const maxAllowed = roundMoney(params.employeeBaseSalary * 0.1)
     if (params.employeeBaseSalary > 0 && params.amount > maxAllowed) {
       return {
         success: false,
@@ -868,7 +869,7 @@ export async function createQuirografarioDeductionAction(
     const today = getEcuadorTodayIso()
 
     const rows = params.installmentAmounts.map((rawAmount, i) => {
-      const amount = Number(rawAmount.toFixed(2))
+      const amount = roundMoney(rawAmount)
       let m = params.startMonth + i
       let y = params.startYear
       while (m > 12) {

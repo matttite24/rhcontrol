@@ -57,6 +57,7 @@ import { VacationDetailContent } from './detail/VacationDetailContent'
 import { LeavePermissionDetailContent } from './detail/LeavePermissionDetailContent'
 import { GenericIncidentContent } from './detail/GenericIncidentContent'
 import { getEcuadorTodayIso } from '@/lib/utils/ecuador-time'
+import { roundMoney } from '@/lib/utils/money'
 
 interface IncidentDetailModalProps {
   incident: Incident | null
@@ -230,10 +231,10 @@ export function IncidentDetailModal({
 
         if (metadata.leave_unit === 'dias') {
           const days = metadata.requested_days || 1
-          deductionAmount = Number(((baseSalary / 30) * days).toFixed(2))
+          deductionAmount = roundMoney((baseSalary / 30) * days)
         } else {
           const hours = metadata.requested_hours || 1
-          deductionAmount = Number(((baseSalary / 240) * hours).toFixed(2))
+          deductionAmount = roundMoney((baseSalary / 240) * hours)
         }
 
         const now = new Date()
